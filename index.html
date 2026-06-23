@@ -6,7 +6,7 @@
 <title>Space Network Traffic Analyzer</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
-@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+/* Leaflet removed */
 :root {
   --bg-deep:#0a0e1a; --bg-panel:#0f1525; --bg-card:#141c30; --border:#1e2d4a;
   --cyan:#00d4ff; --cyan-dim:rgba(0,212,255,.15); --cyan-glow:rgba(0,212,255,.4);
@@ -161,27 +161,7 @@ canvas{display:block;width:100%;}
 ::-webkit-scrollbar-track{background:var(--bg-deep);}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 </style>
-<script>
-// Leaflet をunpkgから読み込み、失敗時はcdnjsにフォールバック
-(function(){
-  function loadLeaflet(url, fallbackUrl) {
-    var s = document.createElement('script');
-    s.src = url;
-    s.onerror = function() {
-      if (fallbackUrl) {
-        var s2 = document.createElement('script');
-        s2.src = fallbackUrl;
-        document.head.appendChild(s2);
-      }
-    };
-    document.head.appendChild(s);
-  }
-  loadLeaflet(
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'
-  );
-})();
-</script>
+
 </head>
 <body>
 <div id="info-float"></div>
@@ -490,7 +470,7 @@ function runAnalysis() {
     Object.values(eeStats).flatMap(s=>s.buckets.map(b=>b.bucket))
   )].sort((a,b)=>a-b);
 
-  analysisResult = { eeStats, allBuckets, capBps, thWarn, thAlert, filtered };
+  analysisResult = { eeStats, allBuckets, capBps, thWarn, thAlert, filtered, bucketSec: aggSec };
 
   // renderResults先にDOMを生成（スライダーはその中で作られる）
   renderResults(analysisResult);
@@ -668,150 +648,170 @@ function mollweide(lon, lat, W, H) {
 // WORLD MAP CANVAS
 // ══════════════════════════════════════════════════════
 const WORLD_LAND = [
-  // ── North America (main) ──
-  {name:'NA',fill:'#4a7a3a',stroke:'#3a6a2a',pts:[
-    [-168,72],[-162,70],[-156,72],[-148,70],[-140,60],[-136,58],[-130,54],[-126,50],[-124,48],
-    [-122,47],[-120,43],[-117,33],[-117,28],[-109,23],[-104,19],[-99,17],[-90,16],[-87,16],
-    [-84,10],[-78,8],[-76,9],[-83,10],[-84,16],[-88,16],[-90,18],[-88,21],[-87,24],[-90,29],
-    [-89,30],[-85,30],[-82,30],[-80,25],[-82,24],[-81,26],[-80,29],[-81,31],[-80,34],
-    [-76,35],[-75,38],[-74,41],[-70,42],[-67,44],[-67,47],[-66,45],[-60,46],[-64,48],
-    [-66,50],[-60,47],[-53,48],[-54,52],[-58,55],[-60,58],[-64,60],[-67,63],[-68,65],
-    [-72,67],[-76,69],[-80,71],[-85,73],[-90,74],[-100,74],[-110,74],[-120,74],[-130,72],
-    [-140,72],[-150,70],[-158,68],[-162,66],[-166,68],[-168,72]
-  ]},
-  // ── Alaska ──
-  {name:'AK',fill:'#4e7e44',stroke:'#3a6030',pts:[
-    [-141,60],[-137,59],[-134,57],[-130,55],[-130,56],[-136,59],[-140,61],
-    [-145,62],[-150,61],[-154,60],[-158,57],[-162,55],[-165,54],[-168,54],
-    [-168,60],[-166,64],[-164,66],[-162,66],[-158,66],[-154,67],[-150,66],
-    [-146,64],[-142,62],[-141,60]
-  ]},
-  // ── Greenland ──
-  {name:'GL',fill:'#c8dce8',stroke:'#a0c0d8',pts:[
-    [-44,60],[-40,63],[-36,66],[-30,69],[-24,72],[-18,76],[-18,80],
-    [-22,83],[-30,84],[-40,84],[-48,83],[-54,80],[-58,77],[-56,72],
-    [-52,68],[-48,65],[-44,62],[-44,60]
-  ]},
-  // ── Iceland ──
-  {name:'IS',fill:'#b0c8d8',stroke:'#90a8c0',pts:[
-    [-24,63],[-20,63],[-14,64],[-12,65],[-14,67],[-18,66],[-22,65],[-24,64],[-24,63]
-  ]},
-  // ── South America ──
-  {name:'SA',fill:'#3a8840',stroke:'#287030',pts:[
-    [-80,10],[-77,8],[-73,11],[-68,12],[-62,12],[-60,8],[-52,5],[-50,2],
-    [-48,-1],[-50,-5],[-48,-8],[-44,-10],[-40,-14],[-38,-17],[-40,-20],
-    [-40,-23],[-43,-23],[-44,-24],[-44,-28],[-48,-28],[-50,-30],[-52,-33],
-    [-53,-34],[-57,-38],[-62,-40],[-65,-44],[-68,-47],[-70,-51],[-68,-53],
-    [-70,-55],[-68,-56],[-65,-55],[-66,-52],[-64,-50],[-66,-46],[-68,-44],
-    [-66,-42],[-62,-40],[-58,-36],[-56,-34],[-58,-30],[-56,-26],[-52,-22],
-    [-48,-18],[-46,-14],[-42,-12],[-40,-8],[-38,-5],[-36,-5],[-34,-6],
-    [-35,-9],[-38,-10],[-40,-8],[-38,-5],[-42,-4],[-44,-3],[-46,-1],
-    [-50,2],[-54,4],[-58,6],[-62,6],[-66,2],[-70,2],[-72,5],[-74,8],
-    [-76,8],[-78,8],[-80,10]
-  ]},
-  // ── Europe ──
-  {name:'EU',fill:'#5a8e48',stroke:'#487836',pts:[
-    [-9,38],[-8,36],[-5,36],[-2,36],[2,37],[4,38],[6,43],[7,44],[8,46],
-    [10,44],[12,44],[14,45],[16,46],[18,45],[20,42],[22,40],[24,38],
-    [26,38],[28,41],[30,42],[28,44],[26,46],[24,48],[22,50],[20,52],
-    [18,54],[16,55],[14,56],[12,56],[10,55],[8,55],[6,57],[5,58],
-    [4,60],[6,62],[8,63],[12,64],[14,65],[16,68],[18,70],[20,70],
-    [24,68],[28,65],[28,63],[26,60],[24,60],[22,58],[20,56],[18,56],
-    [16,58],[14,56],[12,58],[10,58],[8,56],[6,54],[4,52],[2,52],
-    [0,50],[-2,48],[-4,48],[-6,44],[-8,42],[-9,38]
-  ]},
-  // ── UK ──
-  {name:'UK',fill:'#5a8e48',stroke:'#487836',pts:[
-    [-5,50],[-3,50],[-2,52],[0,52],[0,54],[-2,56],[-4,58],[-6,58],
-    [-8,56],[-8,54],[-6,52],[-5,50]
-  ]},
-  // ── Ireland ──
-  {name:'IE',fill:'#5a9048',stroke:'#487836',pts:[
-    [-10,52],[-8,52],[-6,52],[-6,54],[-8,56],[-10,54],[-10,52]
-  ]},
-  // ── Scandinavia ──
-  {name:'SC',fill:'#5a8844',stroke:'#487030',pts:[
-    [4,58],[6,58],[8,58],[10,58],[12,56],[14,56],[16,57],[18,58],
-    [20,60],[20,63],[18,65],[18,68],[20,70],[22,70],[24,68],[26,66],
-    [28,65],[26,62],[24,60],[22,58],[20,56],[18,56],[16,58],[14,56],
-    [12,58],[10,58],[8,56],[6,57],[4,58]
-  ]},
-  // ── Africa ──
-  {name:'AF',fill:'#8aa040',stroke:'#6a8030',pts:[
-    [-6,35],[0,35],[4,37],[8,37],[10,37],[12,34],[12,32],[14,30],
-    [16,28],[18,26],[20,22],[22,18],[24,14],[24,10],[26,8],[28,4],
-    [30,2],[34,-2],[36,-4],[38,-6],[40,-8],[40,-12],[38,-16],[36,-18],
-    [34,-20],[34,-24],[32,-28],[30,-32],[26,-34],[22,-34],[18,-32],
-    [16,-30],[14,-26],[12,-22],[10,-18],[8,-14],[6,-10],[4,-6],[2,-2],
-    [0,4],[-2,6],[-4,8],[-6,10],[-8,14],[-12,16],[-14,20],[-16,24],
-    [-16,28],[-14,32],[-12,34],[-8,36],[-6,35]
-  ]},
-  // ── Madagascar ──
-  {name:'MG',fill:'#7a9840',stroke:'#607830',pts:[
-    [44,-12],[48,-14],[50,-18],[50,-22],[48,-26],[46,-26],[44,-22],[44,-16],[44,-12]
-  ]},
-  // ── Asia (main) ──
-  {name:'AS',fill:'#5a8c48',stroke:'#487438',pts:[
-    [26,42],[28,42],[30,42],[34,36],[36,36],[38,34],[40,34],[42,38],
-    [44,40],[46,42],[48,42],[52,40],[56,38],[60,36],[62,32],[64,28],
-    [66,24],[68,22],[70,22],[72,22],[74,22],[74,18],[76,14],[80,10],
-    [82,8],[84,8],[86,10],[88,22],[90,22],[92,24],[94,26],[96,28],
-    [98,22],[100,18],[100,14],[102,10],[104,4],[104,2],[104,-2],[106,-6],
-    [108,-6],[110,-6],[112,-4],[114,2],[116,4],[118,4],[120,4],[122,6],
-    [124,10],[126,8],[128,10],[130,30],[132,34],[134,36],[136,36],
-    [138,36],[140,38],[141,39],[142,40],[142,41],[141,42],[140,43],
-    [138,40],[137,38],[136,36],[134,34],[132,33],[130,31],[128,34],
-    [130,38],[132,42],[134,44],[136,46],[134,48],[130,50],[126,52],
-    [122,54],[118,54],[114,54],[110,52],[106,50],[102,50],[98,52],
-    [94,52],[90,50],[86,46],[82,46],[78,44],[74,42],[70,42],[66,44],
-    [62,44],[58,44],[54,42],[50,44],[46,44],[42,42],[38,40],[34,38],
-    [30,42],[26,42]
-  ]},
-  // ── Japan (Honshu) ──
-  {name:'JP',fill:'#528840',stroke:'#407030',pts:[
-    [130,31],[131,32],[132,33],[133,34],[134,34],[135,35],[136,36],
-    [137,36],[138,37],[140,38],[141,39],[142,40],[142,41],[141,42],
-    [140,43],[139,42],[138,40],[137,38],[136,36],[134,34],[132,33],
-    [131,32],[130,31]
-  ]},
-  // ── Hokkaido ──
-  {name:'HK',fill:'#528840',stroke:'#407030',pts:[
-    [141,43],[142,44],[144,44],[144,46],[142,46],[140,44],[140,43],[141,43]
-  ]},
-  // ── Korean Peninsula ──
-  {name:'KR',fill:'#5a8844',stroke:'#487034',pts:[
-    [126,34],[128,36],[130,38],[130,36],[128,34],[126,34]
-  ]},
-  // ── Australia ──
-  {name:'AU',fill:'#a06838',stroke:'#885028',pts:[
-    [114,-22],[116,-20],[118,-18],[120,-18],[122,-18],[124,-18],[126,-16],
-    [128,-14],[130,-12],[132,-12],[134,-12],[136,-12],[138,-14],[140,-14],
-    [142,-12],[144,-14],[146,-16],[148,-18],[150,-22],[152,-24],[152,-28],
-    [150,-30],[148,-34],[146,-38],[144,-38],[142,-38],[140,-36],[138,-34],
-    [136,-34],[134,-32],[132,-32],[130,-32],[128,-32],[126,-34],[124,-32],
-    [122,-30],[120,-28],[118,-26],[116,-24],[114,-22]
-  ]},
-  // ── New Zealand ──
-  {name:'NZ',fill:'#4e8040',stroke:'#3c6830',pts:[
-    [172,-34],[174,-36],[176,-38],[178,-38],[178,-42],[176,-44],
-    [172,-44],[170,-42],[170,-38],[172,-34]
-  ]},
-  // ── Philippines ──
-  {name:'PH',fill:'#489050',stroke:'#367038',pts:[
-    [118,8],[120,10],[122,12],[124,14],[122,16],[120,14],[118,12],[118,8]
-  ]},
-  // ── Indonesia (simplified) ──
-  {name:'ID',fill:'#489050',stroke:'#367038',pts:[
-    [96,-4],[102,-4],[108,-6],[112,-8],[114,-8],[116,-8],[106,-8],[102,-6],[96,-4]
-  ]},
-  // ── Sri Lanka ──
-  {name:'SL',fill:'#3e8848',stroke:'#2c6e30',pts:[
-    [80,10],[82,8],[82,6],[80,6],[80,8],[80,10]
-  ]},
-  // ── Cuba ──
-  {name:'CU',fill:'#4e9050',stroke:'#3c7038',pts:[
-    [-85,22],[-82,22],[-80,22],[-76,22],[-75,20],[-78,20],[-82,20],[-84,20],[-85,22]
-  ]},
+// ── North America ──────────────────────────────────────────────────────
+{name:'NA',fill:'#4a7c3f',stroke:'#3a6030',pts:[
+  [-168,72],[-162,70],[-152,72],[-145,68],[-140,60],[-136,58],[-130,54],
+  [-126,50],[-124,48],[-124,46],[-122,47],[-120,44],[-118,36],[-116,32],
+  [-114,28],[-110,24],[-106,20],[-100,18],[-92,16],[-88,16],[-86,14],
+  [-84,10],[-82,8],[-78,8],[-76,9],[-82,10],[-84,16],[-88,16],[-90,18],
+  [-88,22],[-86,24],[-90,29],[-89,30],[-85,30],[-82,30],[-80,26],
+  [-82,24],[-80,32],[-78,34],[-76,35],[-74,38],[-72,41],[-70,42],
+  [-66,44],[-66,47],[-60,46],[-64,48],[-66,50],[-60,47],[-56,48],
+  [-54,52],[-58,56],[-60,58],[-64,60],[-68,63],[-72,66],[-76,69],
+  [-80,71],[-88,73],[-100,74],[-110,74],[-120,74],[-130,72],[-140,72],
+  [-150,70],[-158,68],[-162,66],[-166,68],[-168,72]
+]},
+// ── Alaska ──────────────────────────────────────────────────────────────
+{name:'AK',fill:'#527a45',stroke:'#3e6232',pts:[
+  [-141,60],[-138,59],[-134,57],[-130,55],[-132,56],[-136,59],[-140,61],
+  [-144,62],[-148,61],[-152,60],[-156,58],[-160,56],[-164,54],[-168,54],
+  [-170,56],[-168,60],[-166,64],[-162,66],[-158,66],[-154,67],[-150,66],
+  [-146,64],[-142,62],[-141,60]
+]},
+// ── Greenland ────────────────────────────────────────────────────────────
+{name:'GL',fill:'#ddeef8',stroke:'#b8d4e8',pts:[
+  [-46,60],[-42,62],[-38,65],[-30,68],[-24,72],[-18,76],[-18,80],
+  [-22,84],[-32,84],[-44,84],[-52,82],[-58,78],[-56,72],[-52,68],
+  [-48,65],[-46,62],[-46,60]
+]},
+// ── Iceland ──────────────────────────────────────────────────────────────
+{name:'IS',fill:'#c8dce8',stroke:'#90a8c0',pts:[
+  [-24,63],[-18,63],[-14,64],[-12,65],[-14,67],[-20,66],[-24,65],[-24,63]
+]},
+// ── South America ────────────────────────────────────────────────────────
+{name:'SA',fill:'#3d8c3e',stroke:'#2a7030',pts:[
+  [-80,10],[-76,8],[-72,11],[-68,12],[-62,12],[-60,8],[-52,4],[-50,2],
+  [-48,0],[-50,-4],[-46,-8],[-40,-14],[-38,-16],[-40,-20],[-40,-22],
+  [-43,-22],[-44,-24],[-44,-28],[-48,-28],[-50,-30],[-52,-34],[-54,-34],
+  [-58,-38],[-62,-40],[-65,-44],[-68,-48],[-70,-52],[-68,-54],[-70,-56],
+  [-68,-56],[-64,-54],[-66,-50],[-64,-46],[-66,-44],[-62,-40],[-58,-36],
+  [-56,-34],[-58,-30],[-56,-26],[-50,-22],[-48,-18],[-46,-14],[-40,-8],
+  [-36,-4],[-34,-6],[-36,-9],[-40,-8],[-38,-4],[-44,-2],[-46,0],
+  [-50,2],[-54,4],[-58,6],[-62,6],[-66,2],[-70,2],[-72,5],[-74,8],
+  [-76,8],[-80,10]
+]},
+// ── Europe (West) ────────────────────────────────────────────────────────
+{name:'EUW',fill:'#5c9248',stroke:'#487838',pts:[
+  [-9,38],[-8,36],[-4,36],[2,37],[4,38],[6,44],[8,46],[10,44],
+  [12,44],[14,45],[16,46],[18,45],[20,42],[22,40],[24,38],[26,39],
+  [28,42],[30,43],[28,46],[26,48],[24,50],[22,52],[20,54],[18,56],
+  [16,58],[14,56],[12,56],[10,55],[8,55],[6,58],[4,60],[6,62],
+  [8,63],[12,64],[14,66],[16,68],[18,70],[20,70],[22,68],[24,66],
+  [26,62],[24,60],[22,58],[20,56],[16,58],[14,56],[12,58],[10,58],
+  [8,56],[6,54],[4,52],[2,52],[0,50],[-2,48],[-4,48],[-6,44],
+  [-8,42],[-9,40],[-9,38]
+]},
+// ── Scandinavia ──────────────────────────────────────────────────────────
+{name:'SC',fill:'#5c9248',stroke:'#487838',pts:[
+  [14,56],[16,56],[18,58],[20,60],[20,64],[18,66],[18,70],[20,70],
+  [24,68],[28,66],[28,62],[26,60],[24,58],[22,56],[20,54],[18,54],
+  [16,56],[14,56]
+]},
+// ── UK ────────────────────────────────────────────────────────────────────
+{name:'UK',fill:'#5c9248',stroke:'#487838',pts:[
+  [-5,50],[-3,50],[-2,52],[0,52],[0,54],[-2,56],[-4,58],[-6,58],
+  [-8,56],[-8,54],[-6,52],[-5,50]
+]},
+// ── Ireland ──────────────────────────────────────────────────────────────
+{name:'IE',fill:'#5c9248',stroke:'#487838',pts:[
+  [-10,52],[-8,52],[-6,52],[-6,54],[-8,56],[-10,54],[-10,52]
+]},
+// ── Africa ───────────────────────────────────────────────────────────────
+{name:'AF',fill:'#8da83a',stroke:'#6e8628',pts:[
+  [-6,36],[0,36],[4,38],[8,38],[10,37],[12,34],[12,32],[14,30],
+  [16,28],[18,26],[20,22],[22,18],[24,14],[24,10],[26,8],[28,4],
+  [30,2],[34,-2],[36,-4],[38,-6],[40,-8],[40,-12],[38,-16],[36,-18],
+  [34,-20],[34,-24],[32,-28],[30,-32],[26,-34],[22,-34],[18,-32],
+  [16,-30],[14,-26],[12,-22],[10,-18],[8,-14],[6,-10],[4,-6],[2,-2],
+  [0,4],[-2,6],[-4,8],[-6,10],[-8,14],[-12,16],[-14,20],[-16,24],
+  [-16,28],[-14,32],[-12,34],[-8,36],[-6,36]
+]},
+// ── Madagascar ───────────────────────────────────────────────────────────
+{name:'MG',fill:'#8da83a',stroke:'#6e8628',pts:[
+  [44,-12],[48,-14],[50,-18],[50,-22],[48,-26],[46,-26],[44,-22],[44,-16],[44,-12]
+]},
+// ── Asia (main) ──────────────────────────────────────────────────────────
+{name:'AS',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [26,42],[30,42],[34,36],[36,36],[38,34],[40,34],[42,38],[44,40],
+  [48,42],[52,40],[56,38],[60,36],[62,32],[64,28],[66,24],[68,22],
+  [72,22],[74,22],[74,18],[76,14],[80,10],[82,8],[84,8],[86,10],
+  [88,22],[90,22],[92,24],[94,26],[96,28],[98,22],[100,18],[100,14],
+  [102,10],[104,4],[104,2],[104,-2],[106,-6],[108,-6],[110,-6],
+  [112,-4],[114,2],[116,4],[118,4],[120,4],[122,6],[124,10],
+  [126,8],[128,10],[130,30],[132,34],[134,36],[136,36],[138,36],
+  [140,38],[141,39],[142,40],[142,41],[141,42],[140,43],[138,40],
+  [136,36],[134,34],[132,33],[130,32],[128,34],[130,38],[132,42],
+  [134,44],[136,46],[134,48],[130,50],[126,52],[122,54],[118,54],
+  [114,54],[110,52],[106,50],[102,50],[98,52],[94,52],[90,50],
+  [86,46],[82,46],[78,44],[74,42],[70,42],[66,44],[62,44],[58,44],
+  [54,42],[50,44],[46,44],[42,42],[38,40],[34,38],[30,42],[26,42]
+]},
+// ── Japan (Honshu) ───────────────────────────────────────────────────────
+{name:'JP',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [130,31],[131,32],[133,34],[134,35],[136,36],[138,37],[140,38],
+  [141,39],[141,41],[140,43],[139,42],[138,40],[136,36],[134,34],
+  [132,33],[131,32],[130,31]
+]},
+// ── Hokkaido ─────────────────────────────────────────────────────────────
+{name:'HK',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [141,43],[143,44],[144,45],[144,46],[142,46],[140,44],[140,43],[141,43]
+]},
+// ── Taiwan ───────────────────────────────────────────────────────────────
+{name:'TW',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [120,22],[122,24],[122,26],[120,26],[120,24],[120,22]
+]},
+// ── Sri Lanka ────────────────────────────────────────────────────────────
+{name:'SL',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [80,10],[82,8],[82,6],[80,6],[80,8],[80,10]
+]},
+// ── Australia ────────────────────────────────────────────────────────────
+{name:'AU',fill:'#b07235',stroke:'#8e5a28',pts:[
+  [114,-22],[118,-18],[122,-18],[126,-16],[128,-14],[130,-12],[132,-12],
+  [134,-12],[136,-12],[138,-14],[140,-14],[142,-12],[144,-14],[146,-16],
+  [148,-18],[150,-22],[152,-24],[152,-28],[150,-30],[148,-34],[146,-38],
+  [144,-38],[142,-38],[140,-36],[138,-34],[136,-34],[134,-32],[132,-32],
+  [130,-32],[128,-34],[126,-34],[124,-32],[122,-30],[120,-28],[118,-26],
+  [116,-24],[114,-22]
+]},
+// ── New Zealand (North) ──────────────────────────────────────────────────
+{name:'NZN',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [172,-34],[174,-36],[176,-38],[178,-38],[176,-40],[174,-38],[172,-36],[172,-34]
+]},
+// ── New Zealand (South) ──────────────────────────────────────────────────
+{name:'NZS',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [168,-44],[170,-44],[172,-44],[172,-46],[170,-48],[168,-46],[168,-44]
+]},
+// ── Borneo ───────────────────────────────────────────────────────────────
+{name:'BO',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [108,2],[110,4],[114,6],[116,6],[118,4],[118,2],[116,0],[114,-2],
+  [112,-4],[108,-4],[108,0],[108,2]
+]},
+// ── Sumatra ──────────────────────────────────────────────────────────────
+{name:'SU',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [96,4],[100,4],[104,2],[106,0],[106,-2],[104,-4],[102,-4],[98,-2],[96,2],[96,4]
+]},
+// ── Java ─────────────────────────────────────────────────────────────────
+{name:'JV',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [106,-6],[108,-8],[112,-8],[114,-8],[112,-8],[108,-8],[106,-6]
+]},
+// ── Philippines ──────────────────────────────────────────────────────────
+{name:'PH',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [118,8],[120,10],[122,12],[124,14],[122,16],[120,14],[118,12],[118,8]
+]},
+// ── Cuba ─────────────────────────────────────────────────────────────────
+{name:'CU',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [-85,22],[-82,22],[-80,22],[-76,22],[-75,20],[-78,20],[-82,20],[-84,20],[-85,22]
+]},
+// ── Antarctica ───────────────────────────────────────────────────────────
+{name:'AN',fill:'#e8f4ff',stroke:'#c0d8f0',pts:[
+  [-180,-70],[-150,-68],[-120,-66],[-90,-70],[-60,-70],[-30,-70],
+  [0,-68],[30,-66],[60,-68],[90,-68],[120,-68],[150,-68],[180,-70],
+  [180,-90],[-180,-90],[-180,-70]
+]},
+// ── Arctic (simplified) ──────────────────────────────────────────────────
+{name:'AR',fill:'#ddeef8',stroke:'#b8d4e8',pts:[
+  [-180,78],[-90,80],[0,82],[90,80],[180,78],[180,90],[-180,90],[-180,78]
+]},
 ];
 
 // ── Shared land-drawing helper ──────────────────────────────────────────
@@ -864,48 +864,54 @@ function drawLandColored(ctx, projectFn, isGlobe, centerLon) {
 
   // ── Terrain overlays (deserts, ice, rainforest) ─────────────────────────
   const zones = [
-    // Sahara
-    {f:'rgba(195,165,85,0.78)',s:null,
-     p:[[-6,36],[4,34],[10,34],[16,32],[20,30],[24,28],[28,26],[32,24],[36,22],[40,20],
-        [36,16],[30,16],[24,18],[20,20],[16,22],[12,24],[8,24],[4,22],[0,20],[-4,22],[-6,26],[-6,30],[-6,36]]},
-    // Arabian Desert
-    {f:'rgba(190,158,80,0.76)',s:null,
-     p:[[36,22],[40,20],[44,18],[50,14],[56,16],[60,22],[58,26],[56,28],[52,30],[48,30],[44,28],[40,26],[36,22]]},
-    // Australian Outback
-    {f:'rgba(180,100,40,0.72)',s:null,
-     p:[[116,-20],[120,-18],[126,-18],[130,-18],[134,-18],[138,-20],[138,-26],[134,-28],[130,-30],[126,-30],[120,-28],[116,-24],[116,-20]]},
-    // Gobi
-    {f:'rgba(185,162,100,0.70)',s:null,
-     p:[[90,40],[96,40],[102,42],[108,42],[110,40],[108,38],[104,38],[100,40],[96,40],[92,40],[90,40]]},
-    // Amazon
-    {f:'rgba(20,90,35,0.72)',s:null,
-     p:[[-74,2],[-70,4],[-64,4],[-60,4],[-56,4],[-52,2],[-50,0],[-50,-4],[-52,-8],[-56,-12],[-60,-12],[-64,-10],[-68,-8],[-70,-4],[-74,0],[-74,2]]},
-    // Congo
-    {f:'rgba(20,90,35,0.72)',s:null,
-     p:[[12,2],[16,4],[20,4],[24,2],[26,0],[26,-4],[24,-6],[20,-6],[16,-4],[12,-2],[12,2]]},
-    // SE Asia jungle
-    {f:'rgba(20,90,35,0.68)',s:null,
-     p:[[100,6],[104,6],[108,4],[112,2],[114,-2],[112,-6],[108,-8],[104,-4],[100,0],[98,4],[100,6]]},
-    // Siberian taiga
-    {f:'rgba(40,72,40,0.65)',s:null,
-     p:[[60,56],[80,56],[100,56],[120,56],[130,60],[120,64],[100,64],[80,60],[60,58],[60,56]]},
-    // NA boreal
-    {f:'rgba(40,72,40,0.65)',s:null,
-     p:[[-140,56],[-110,56],[-80,56],[-66,50],[-80,48],[-110,52],[-140,54],[-140,56]]},
-    // Greenland ice
-    {f:'rgba(210,235,250,0.90)',s:'rgba(180,215,238,0.4)',
-     p:[[-46,64],[-40,66],[-34,68],[-26,72],[-20,76],[-18,80],[-24,84],[-34,84],[-44,82],[-52,80],[-58,76],[-56,72],[-52,68],[-48,66],[-46,64]]},
-    // Antarctica
-    {f:'rgba(220,242,255,0.92)',s:'rgba(190,225,245,0.4)',
-     p:[[-180,-72],[-120,-66],[-60,-72],[0,-70],[60,-68],[120,-68],[180,-72],[180,-90],[-180,-90],[-180,-72]]},
-    // Arctic
-    {f:'rgba(200,228,248,0.80)',s:null,
-     p:[[-180,76],[-90,78],[0,82],[90,76],[180,76],[180,90],[-180,90],[-180,76]]},
-    // Tibetan plateau
-    {f:'rgba(148,168,128,0.70)',s:null,
-     p:[[76,30],[88,30],[98,28],[100,26],[90,26],[84,28],[78,28],[76,30]]},
+    // サハラ砂漠
+    {f:'rgba(210,178,90,0.80)',s:null,p:[
+      [-6,36],[4,34],[10,34],[16,32],[20,30],[24,28],[28,26],[32,24],
+      [36,22],[40,20],[36,16],[30,16],[24,18],[20,20],[16,22],[12,24],
+      [8,24],[4,22],[0,20],[-4,22],[-6,26],[-6,30],[-6,36]]},
+    // アラビア半島砂漠
+    {f:'rgba(200,162,78,0.78)',s:null,p:[
+      [36,22],[40,20],[44,18],[50,14],[56,16],[60,22],[58,26],[56,28],
+      [52,30],[48,30],[44,28],[40,26],[36,22]]},
+    // イラン・中央アジア乾燥地
+    {f:'rgba(188,158,90,0.55)',s:null,p:[
+      [50,28],[56,28],[60,30],[64,32],[68,36],[72,38],[68,40],[64,38],
+      [60,36],[56,34],[52,32],[50,28]]},
+    // ゴビ砂漠
+    {f:'rgba(190,168,105,0.65)',s:null,p:[
+      [90,40],[96,42],[102,44],[108,44],[110,42],[106,38],[100,38],
+      [96,40],[92,40],[90,40]]},
+    // オーストラリア内陸
+    {f:'rgba(185,105,42,0.70)',s:null,p:[
+      [116,-20],[120,-18],[128,-18],[132,-18],[136,-20],[138,-26],
+      [134,-30],[130,-32],[126,-32],[120,-30],[116,-26],[116,-20]]},
+    // アマゾン熱帯雨林
+    {f:'rgba(16,88,28,0.68)',s:null,p:[
+      [-74,2],[-68,4],[-62,4],[-56,4],[-52,2],[-50,0],[-50,-4],
+      [-52,-8],[-56,-12],[-60,-12],[-64,-10],[-68,-8],[-70,-4],[-74,0],[-74,2]]},
+    // コンゴ熱帯雨林
+    {f:'rgba(16,88,28,0.65)',s:null,p:[
+      [12,2],[16,4],[20,4],[24,2],[26,0],[26,-4],[24,-6],
+      [20,-6],[16,-4],[12,-2],[12,2]]},
+    // 東南アジア熱帯雨林
+    {f:'rgba(16,88,28,0.60)',s:null,p:[
+      [98,4],[102,6],[106,6],[110,4],[114,0],[112,-4],[108,-6],
+      [104,-4],[100,0],[98,4]]},
+    // シベリアタイガ
+    {f:'rgba(38,70,38,0.50)',s:null,p:[
+      [60,56],[80,56],[100,56],[120,58],[130,60],[120,66],[100,66],
+      [80,62],[60,60],[60,56]]},
+    // 北米タイガ
+    {f:'rgba(38,70,38,0.48)',s:null,p:[
+      [-140,56],[-110,56],[-80,56],[-68,50],[-80,48],[-110,52],[-140,54],[-140,56]]},
+    // チベット高原
+    {f:'rgba(140,160,120,0.60)',s:null,p:[
+      [76,30],[88,30],[100,28],[102,26],[90,26],[84,28],[78,28],[76,30]]},
+    // グリーンランド氷床
+    {f:'rgba(220,242,255,0.92)',s:'rgba(180,220,248,0.4)',p:[
+      [-46,64],[-40,66],[-34,68],[-26,72],[-20,76],[-18,80],[-24,84],
+      [-34,84],[-44,82],[-52,80],[-58,76],[-56,72],[-52,68],[-48,66],[-46,64]]},
   ];
-
   for(const z of zones){
     drawPoly(z.p, z.f, z.s, 0.3, false);
   }
@@ -1148,13 +1154,8 @@ function initMercatorHover() {
     el.addEventListener('mousemove', e => {
       const rect = el.getBoundingClientRect();
       const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
-      if (h) {
-        showTooltip(e.clientX, e.clientY, h);
-        el.style.cursor = 'pointer';
-      } else {
-        hideTooltip();
-        el.style.cursor = 'default';
-      }
+      if (h) { showTooltip(e.clientX, e.clientY, h); el.style.cursor='pointer'; }
+      else   { hideTooltip(); el.style.cursor='default'; }
     });
     el.addEventListener('mouseleave', hideTooltip);
     el.addEventListener('click', e => {
@@ -1162,6 +1163,18 @@ function initMercatorHover() {
       const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
       if (h) showModal(h);
     });
+    // タッチタップ
+    let _ts = {x:0,y:0};
+    el.addEventListener('touchstart', e => {
+      _ts = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    }, {passive:true});
+    el.addEventListener('touchend', e => {
+      const t = e.changedTouches[0];
+      if (Math.abs(t.clientX-_ts.x)>10 || Math.abs(t.clientY-_ts.y)>10) return;
+      const rect = el.getBoundingClientRect();
+      const h = hitTestArcs(t.clientX-rect.left, t.clientY-rect.top);
+      if (h) showModal(h);
+    }, {passive:true});
   });
 }
 
@@ -1185,13 +1198,14 @@ function mapZoom(dir) {
   }
 }
 
+
 // ── Globe rotation state ──────────────────────────────────────────────────
 let globeLon = 140; // center longitude (deg)
 let globeLat =  30; // center latitude  (deg)
 let globeZoom = 0.38; // globe radius ratio — 初期は全体が見えるサイズ
 let mercZoom = 1.0;   // mercator zoom scale
 let mercCenterLon = 139.69;
-let mercCenterLat = 25.0;
+let mercCenterLat = 0;
 let dragState = null; // {startX,startY,startLon,startLat}
 let lastRenderBucket = null;
 let lastRes = null;
@@ -1311,7 +1325,7 @@ function drawMercatorCanvas(res, activeBucket) {
 
   const container = document.getElementById('map-container');
   const W = container.offsetWidth || 600;
-  const H = Math.round(W * 0.58);
+  const H = Math.round(W * 0.65);
   const canvas = document.getElementById('world-canvas');
   const dpr = window.devicePixelRatio || 1;
   canvas.width = W * dpr; canvas.height = H * dpr;
@@ -1320,7 +1334,7 @@ function drawMercatorCanvas(res, activeBucket) {
   ctx.clearRect(0, 0, W*dpr, H*dpr);
   ctx.save(); ctx.scale(dpr, dpr);
 
-  const MAX_LAT = 78;
+  const MAX_LAT = 82;
   // merc: lon は連続正規化済み経度も受け取れる（折り返しなし）
   function merc(lon, lat) {
     const dLon = lon - mercCenterLon; // 折り返しなし→連続弧に対応
@@ -1348,15 +1362,24 @@ function drawMercatorCanvas(res, activeBucket) {
     return [x, y];
   }
 
-  // 背景
-  ctx.fillStyle = '#06101e'; ctx.fillRect(0,0,W,H);
+  // 背景（深海グラデーション）
+  ctx.fillStyle = '#051520'; ctx.fillRect(0,0,W,H);
   const og = ctx.createLinearGradient(0,0,0,H);
-  og.addColorStop(0,'#1c6ea0'); og.addColorStop(0.5,'#176090');
-  og.addColorStop(0.8,'#104e78'); og.addColorStop(1,'#0a3255');
+  og.addColorStop(0,   '#0e4f82');
+  og.addColorStop(0.25,'#0d4878');
+  og.addColorStop(0.5, '#0b3d6a');
+  og.addColorStop(0.75,'#09305a');
+  og.addColorStop(1,   '#061e3c');
   ctx.fillStyle = og; ctx.fillRect(0,0,W,H);
+  // 浅海ハイライト（赤道付近）
+  const shallowG = ctx.createRadialGradient(W/2,H*0.45,0,W/2,H*0.45,W*0.6);
+  shallowG.addColorStop(0,   'rgba(30,120,200,0.18)');
+  shallowG.addColorStop(0.5, 'rgba(20,90,160,0.06)');
+  shallowG.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle=shallowG; ctx.fillRect(0,0,W,H);
 
   // グリッド
-  ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=0.4;
+  ctx.strokeStyle='rgba(100,160,220,0.06)'; ctx.lineWidth=0.3;
   for (let lat=-60;lat<=60;lat+=30) {
     const [,y]=mercWrap(mercCenterLon,lat);
     ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
@@ -1374,7 +1397,7 @@ function drawMercatorCanvas(res, activeBucket) {
   ctx.strokeRect(0,0,W,H);
 
   // 弧
-  const {eeStats,thWarn,thAlert} = res;
+  const {eeStats,thWarn,thAlert,capBps} = res;
   hitAreas = [];
   const mercNodes = [];
   const edgeLabels = [];
@@ -1383,7 +1406,6 @@ function drawMercatorCanvas(res, activeBucket) {
     const bObj=stat.buckets.reduce((p,c)=>Math.abs(c.bucket-activeBucket)<Math.abs(p.bucket-activeBucket)?c:p);
     const util=bObj.util, wpts=Object.entries(bObj.waypoints);
     if (wpts.length<2) continue;
-    let rgb=util>=thAlert?'255,107,53':util>=thWarn?'255,200,50':'0,212,255';
     const maxBps=Math.max(...Object.values(eeStats).map(s=>s.avgBps));
     const thick=1.8+(bObj.avgBps/maxBps)*5;
     const [,first]=wpts[0],[,last]=wpts[wpts.length-1];
@@ -1419,7 +1441,7 @@ function drawMercatorCanvas(res, activeBucket) {
     const segs=[]; let seg=[];
     for(const [lo,la] of normPts){
       const dLon = lo - mercCenterLon;
-      if(Math.abs(dLon) <= 180+0.5){  // 少し余裕を持たせる
+      if(Math.abs(dLon) <= 220){  // 東京中心で西端まで表示
         seg.push([lo, la]);
       } else {
         if(seg.length>1) segs.push(seg);
@@ -1432,11 +1454,16 @@ function drawMercatorCanvas(res, activeBucket) {
     const crossed = segs.length>1;
     const allScreenPts=[];
 
+    // 収容率から単色を決定
+    const rgb = util>=thAlert?'255,107,53':util>=thWarn?'255,200,50':'0,212,255';
+
     segs.forEach((segPts,si)=>{
       const sp = segPts.map(([lo,la])=>merc(lo,la));
       allScreenPts.push(...sp);
+      const n = sp.length;
+      if (n < 2) return;
 
-      // 外周グロー
+      // グロー
       ctx.beginPath(); sp.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
       ctx.strokeStyle=`rgba(${rgb},0.07)`; ctx.lineWidth=thick*6;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
@@ -1451,10 +1478,10 @@ function drawMercatorCanvas(res, activeBucket) {
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
 
       // 流れるドット
-      const t=(Date.now()/2000)%1;
+      const t2=(Date.now()/2000)%1;
       for(let k=0;k<3;k++){
-        const ti=(t+k/3)%1, idx=Math.floor(ti*(sp.length-1));
-        const[dx,dy]=sp[Math.max(0,idx)];
+        const ti=(t2+k/3)%1, pidx=Math.floor(ti*(n-1));
+        const[dx,dy]=sp[Math.max(0,pidx)];
         if(!isFinite(dx)||!isFinite(dy)) continue;
         const dg=ctx.createRadialGradient(dx,dy,0,dx,dy,5);
         dg.addColorStop(0,`rgba(${rgb},0.9)`); dg.addColorStop(1,`rgba(${rgb},0)`);
@@ -1473,7 +1500,6 @@ function drawMercatorCanvas(res, activeBucket) {
         }
       }
     });
-
     const midAll=allScreenPts[Math.floor(allScreenPts.length/2)]||allScreenPts[0];
     if(!midAll) continue;
     hitAreas.push({ee,util,bObj,mx:midAll[0],my:midAll[1],rgb,sp:allScreenPts,thick});
@@ -1621,10 +1647,10 @@ function drawGlobe(res, activeBucket) {
 
   // ── Ocean disc ──
   const og=ctx.createRadialGradient(cx,cy,R*0.1,cx,cy,R);
-  og.addColorStop(0,  '#1a3a60');
-  og.addColorStop(0.4,'#112c4e');
-  og.addColorStop(0.75,'#0c1e38');
-  og.addColorStop(1,  '#060e1e');
+  og.addColorStop(0,  '#1c4068');
+  og.addColorStop(0.4,'#133258');
+  og.addColorStop(0.75,'#0d2242');
+  og.addColorStop(1,  '#06101e');
   ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2);
   ctx.fillStyle=og; ctx.fill();
 
@@ -1670,7 +1696,7 @@ function drawGlobe(res, activeBucket) {
   ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
 
   // ── Arcs ──────────────────────────────────────────────────────────────
-  const { eeStats, thWarn, thAlert } = res;
+  const { eeStats, thWarn, thAlert, capBps } = res;
   hitAreas = [];
   const cityLabels = []; // drawn last, always on top
   const nodeList   = []; // drawn after arcs
@@ -1682,62 +1708,51 @@ function drawGlobe(res, activeBucket) {
     const wpts = Object.entries(bObj.waypoints);
     if (wpts.length < 2) continue;
 
-    let rgb;
-    if (util >= thAlert)     rgb='255,107,53';
-    else if (util >= thWarn) rgb='255,200,50';
-    else                     rgb='0,212,255';
+    const rgb = util>=thAlert?'255,107,53':util>=thWarn?'255,200,50':'0,212,255';
 
     const maxBps = Math.max(...Object.values(eeStats).map(s=>s.avgBps));
     const thick  = 1.5 + (bObj.avgBps/maxBps)*4.5;
-
     const [,first] = wpts[0];
     const [,last]  = wpts[wpts.length-1];
     const arcPts   = greatCirclePoints(first.lon,first.lat,last.lon,last.lat,80);
-
-    // Project all points
-    const proj = arcPts.map(([lo,la]) => orthoProject(lo,la,globeLon,globeLat,cx,cy,R));
-
-    // Split into visible sub-segments
-    const subSegs = [];
-    let cur = [];
+    const proj     = arcPts.map(([lo,la]) => orthoProject(lo,la,globeLon,globeLat,cx,cy,R));
+    const subSegs  = [];
+    let curSeg = [];
     for (const p of proj) {
-      if (p.visible) { cur.push(p); }
-      else { if (cur.length>1) subSegs.push(cur); cur=[]; }
+      if (p.visible) { curSeg.push(p); }
+      else { if (curSeg.length>1) subSegs.push(curSeg); curSeg=[]; }
     }
-    if (cur.length>1) subSegs.push(cur);
+    if (curSeg.length>1) subSegs.push(curSeg);
 
     for (const sp of subSegs) {
-      // Glow
+      const n = sp.length; if (n < 2) continue;
+      // グロー
       ctx.beginPath();
       sp.forEach((p,i) => i===0?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py));
       ctx.strokeStyle=`rgba(${rgb},0.1)`; ctx.lineWidth=thick*4;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
-      // Line
+      // 本線
       ctx.beginPath();
       sp.forEach((p,i) => i===0?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py));
       ctx.strokeStyle=`rgba(${rgb},0.9)`; ctx.lineWidth=thick;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
     }
-
-    // Animated flow dots (only on visible segments)
+    // 流れるドット
     const allVis = proj.filter(p=>p.visible);
     if (allVis.length > 1) {
-      const t = (Date.now()/2000) % 1;
+      const t = (Date.now()/2000)%1;
       for (let k=0;k<3;k++) {
-        const ti = (t+k/3)%1;
-        const idx = Math.floor(ti*(allVis.length-1));
-        const p = allVis[idx];
+        const ti=(t+k/3)%1, idx=Math.floor(ti*(allVis.length-1));
+        const p=allVis[idx];
         ctx.beginPath(); ctx.arc(p.px,p.py,3,0,Math.PI*2);
         ctx.fillStyle=`rgba(${rgb},0.95)`; ctx.fill();
       }
     }
 
-    // Midpoint — collect for later draw
     const midVis = allVis[Math.floor(allVis.length/2)];
     const visPts=proj.filter(p=>p.visible).map(p=>[p.px,p.py]);
-    if (midVis) hitAreas.push({ee,util,bObj,mx:midVis.px,my:midVis.py,rgb,midVis,sp:visPts,thick:thick});
+    if (midVis) hitAreas.push({ee,util,bObj,mx:midVis.px,my:midVis.py,rgb,midVis,sp:visPts,thick});
 
-    // Collect city labels for later (drawn after all arcs)
     const eeParts = ee.split(/[〜～\-–—]/);
     const cityFrom = eeParts[0]?.trim()||ee;
     const cityTo   = eeParts[1]?.trim()||ee;
@@ -1846,24 +1861,49 @@ function hitTestArcs(mx, my) {
   return null;
 }
 
-// Canvas click → modal
-document.addEventListener('click', e => {
+// ── world-canvas クリック・ホバー（マウス＋タッチ共通） ──────────────
+function onCanvasHit(clientX, clientY) {
   const canvas = document.getElementById('world-canvas');
-  if (!canvas || e.target !== canvas) return;
+  if (!canvas || canvas.style.display === 'none') return null;
   const rect = canvas.getBoundingClientRect();
-  const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
+  return hitTestArcs(clientX - rect.left, clientY - rect.top);
+}
+
+// マウスクリック
+document.addEventListener('click', e => {
+  const h = onCanvasHit(e.clientX, e.clientY);
   if (h) showModal(h);
 });
 
-// Hover tooltip
+// マウスホバー
 document.addEventListener('mousemove', e => {
   const canvas = document.getElementById('world-canvas');
-  if (!canvas || e.target !== canvas) { hideTooltip(); return; }
+  if (!canvas || canvas.style.display === 'none') { hideTooltip(); return; }
   const rect = canvas.getBoundingClientRect();
+  // canvasの範囲外なら非表示
+  if (e.clientX < rect.left || e.clientX > rect.right ||
+      e.clientY < rect.top  || e.clientY > rect.bottom) { hideTooltip(); return; }
   const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
   if (h) { showTooltip(e.clientX, e.clientY, h); canvas.style.cursor='pointer'; }
   else   { hideTooltip(); canvas.style.cursor='default'; }
 });
+
+// タッチタップ（スマホ対応）
+let _touchStartX = 0, _touchStartY = 0;
+document.addEventListener('touchstart', e => {
+  _touchStartX = e.touches[0].clientX;
+  _touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+document.addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  // タップ（移動が少ない場合のみ）
+  const dx = Math.abs(t.clientX - _touchStartX);
+  const dy = Math.abs(t.clientY - _touchStartY);
+  if (dx > 10 || dy > 10) return; // スワイプは無視
+  const h = onCanvasHit(t.clientX, t.clientY);
+  if (h) showModal(h);
+}, { passive: true });
 
 function showTooltip(cx, cy, h) {
   const tt = document.getElementById('tooltip');
@@ -1900,23 +1940,26 @@ function showKpiDetail(type) {
   let title = '', body = '';
 
   if (type === 'routes') {
-    // ── 全通信区間一覧 ──────────────────────────────────────────────
+    // ── 全通信区間一覧（クリックで閾値超え詳細） ──────────────────────
     title = `通信区間一覧（全 ${ees.length} 区間）`;
-    const sorted = ees.sort((a,b) => b[1].maxU - a[1].maxU);
-    body = `<table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:11px;">
-      <thead><tr>
-        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">区間名</th>
-        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">最大収容率</th>
-        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">平均収容率</th>
-        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">平均帯域</th>
-      </tr></thead><tbody>
-      ${sorted.map(([ee,s]) => `<tr>
-        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);white-space:nowrap">${ee}</td>
-        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:${utilColor(s.maxU,thWarn,thAlert)}">${s.maxU.toFixed(1)}%</td>
-        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:var(--text-dim)">${s.avgU.toFixed(1)}%</td>
-        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:var(--text-dim)">${fmtBps(s.avgBps)}</td>
-      </tr>`).join('')}
-      </tbody></table>`;
+    const sorted = [...ees].sort((a,b) => b[1].maxU - a[1].maxU);
+    body = '<div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">区間名をクリックすると閾値超え詳細が表示されます</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+      + '<thead><tr>'
+      + '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">区間名</th>'
+      + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">最大収容率</th>'
+      + '<th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">平均帯域</th>'
+      + '</tr></thead><tbody>'
+      + sorted.map(([ee, s]) => {
+          const col = utilColor(s.maxU, thWarn, thAlert);
+          const eeB64 = btoa(unescape(encodeURIComponent(ee)));
+          return '<tr class="route-row" data-ee="' + eeB64 + '" style="cursor:pointer">'
+            + '<td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);color:var(--cyan)">' + ee + '</td>'
+            + '<td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;font-weight:700;color:' + col + '">' + s.maxU.toFixed(1) + '%</td>'
+            + '<td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:var(--text-dim)">' + fmtBps(s.avgBps) + '</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table>';
   }
 
   else if (type === 'peak') {
@@ -1944,18 +1987,22 @@ function showKpiDetail(type) {
         <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${fmtBucketLabel(peakBucket)}</div>
       </div>
       <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;letter-spacing:.06em;text-transform:uppercase">収容率 上位10件</div>
-      <table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:11px;">
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:10px;">
         <thead><tr>
-          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">区間</th>
-          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">時刻</th>
-          <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">収容率</th>
+          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim)">区間</th>
+          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim)">時刻</th>
+          <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim)">利用帯域</th>
+          <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim)">収容率</th>
         </tr></thead><tbody>
         ${top.map(p => `<tr>
           <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);white-space:nowrap">${p.ee}</td>
           <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);color:var(--text-dim)">${fmtBucketLabel(p.bucket)}</td>
-          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:${utilColor(p.util,thWarn,thAlert)}">${p.util.toFixed(1)}%</td>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:var(--text)">${fmtBps(p.avgBps)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;font-weight:700;color:${utilColor(p.util,thWarn,thAlert)}">
+            ${p.util.toFixed(1)}%</td>
         </tr>`).join('')}
-        </tbody></table>`;
+        </tbody></table></div>`;
   }
 
   else if (type === 'danger') {
@@ -1967,19 +2014,43 @@ function showKpiDetail(type) {
     } else {
       body = dangerEEs.sort((a,b) => b[1].maxU - a[1].maxU).map(([ee, s]) => {
         const dangerBuckets = s.buckets.filter(b => b.util >= thAlert);
+        // rawRowsからbucket×linkId単位で集計（tsSec変換）
+        const dBSec = analysisResult.bucketSec || 3600;
+        const dRowMap = {};
+        for (const r of rawRows.filter(r2 => r2.ee === ee)) {
+          const bucket = Math.floor(tsSec(r.ts) / dBSec) * dBSec;
+          const key = bucket + '_' + r.linkId;
+          if (!dRowMap[key]) dRowMap[key] = { bucket, linkId: r.linkId, bpsSum: 0, cnt: 0 };
+          dRowMap[key].bpsSum += r.bps;
+          dRowMap[key].cnt++;
+        }
+        const dAlertRows = Object.values(dRowMap)
+          .map(e => ({ bucket: e.bucket, linkId: e.linkId, bps: e.bpsSum / e.cnt, util: (e.bpsSum / e.cnt) / capBps * 100 }))
+          .filter(e => e.util >= thAlert)
+          .sort((a, b) => a.bucket - b.bucket);
         return `
           <div style="margin-bottom:14px;padding:12px;background:var(--bg-panel);border-radius:6px;border:1px solid rgba(255,107,53,.3)">
             <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--alert);margin-bottom:8px">${ee}</div>
-            <div style="display:flex;gap:16px;font-size:11px;color:var(--text-dim);margin-bottom:8px">
+            <div style="display:flex;gap:16px;font-size:11px;color:var(--text-dim);margin-bottom:10px">
               <span>最大: <b style="color:var(--alert)">${s.maxU.toFixed(1)}%</b></span>
-              <span>発生: <b style="color:var(--text)">${dangerBuckets.length}回</b></span>
+              <span>発生: <b style="color:var(--text)">${dangerBuckets.length}スロット</b></span>
               <span>平均帯域: <b style="color:var(--text)">${fmtBps(s.avgBps)}</b></span>
             </div>
-            <div style="font-size:10px;color:var(--text-dim);margin-bottom:5px">超過時刻</div>
-            <div style="display:flex;flex-wrap:wrap;gap:4px">
-              ${dangerBuckets.slice(0,12).map(b => `<span style="font-family:'Space Mono',monospace;font-size:9px;background:rgba(255,107,53,.12);color:var(--alert);border:1px solid rgba(255,107,53,.25);border-radius:3px;padding:2px 6px">${fmtBucketLabel(b.bucket)}</span>`).join('')}
-              ${dangerBuckets.length > 12 ? `<span style="font-size:9px;color:var(--text-dim)">… 他${dangerBuckets.length-12}件</span>` : ''}
-            </div>
+            ${dAlertRows.length > 0 ? `
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">▶ 閾値超え詳細（${dAlertRows.length}件）</div>
+            <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:10px;">
+              <thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
+                <th style="text-align:left;padding:3px 6px">時刻</th>
+                <th style="text-align:left;padding:3px 6px">リンクID</th>
+                <th style="text-align:right;padding:3px 6px">利用帯域</th>
+                <th style="text-align:right;padding:3px 6px">収容率</th>
+              </tr></thead>
+              <tbody>
+                ${dAlertRows.slice(0,50).map(r => '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)"><td style="padding:3px 6px;color:var(--text-dim);white-space:nowrap">' + fmtBucketLabel(r.bucket) + '</td><td style="padding:3px 6px;color:var(--cyan)">' + r.linkId + '</td><td style="padding:3px 6px;text-align:right;color:var(--text)">' + fmtBps(r.bps) + '</td><td style="padding:3px 6px;text-align:right;font-weight:700;color:var(--alert)">' + r.util.toFixed(1) + '%</td></tr>').join('')}
+                ${dAlertRows.length > 50 ? '<tr><td colspan="4" style="padding:4px 6px;color:var(--text-dim);font-size:9px">… 他' + (dAlertRows.length-50) + '件</td></tr>' : ''}
+              </tbody>
+            </table></div>` : '<div style="font-size:10px;color:var(--text-dim)">閾値超えなし</div>'}
           </div>`;
       }).join('');
     }
@@ -2019,26 +2090,144 @@ function showKpiDetail(type) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = body;
   document.getElementById('modal-overlay').classList.add('open');
+
+  // route-row クリックハンドラを登録
+  document.querySelectorAll('.route-row').forEach(function(row) {
+    row.addEventListener('mouseover', function() { this.style.background = 'rgba(0,212,255,0.07)'; });
+    row.addEventListener('mouseout',  function() { this.style.background = ''; });
+    row.addEventListener('click', function() {
+      const eeB64 = this.getAttribute('data-ee');
+      const ee = decodeURIComponent(escape(atob(eeB64)));
+      showRouteDetail(ee);
+    });
+  });
+}
+
+function fmtTs(ts) {
+  const s = String(ts);
+  if (s.length !== 14) return s;
+  return `${s.slice(0,4)}/${s.slice(4,6)}/${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}`;
+}
+
+function showRouteDetail(ee) {
+  if (!analysisResult) return;
+  const { thWarn, thAlert, capBps, bucketSec } = analysisResult;
+  const bSec = bucketSec || 3600;
+  const eeRows = rawRows.filter(r => r.ee === ee);
+  const rowMap = {};
+  for (const r of eeRows) {
+    const bucket = Math.floor(tsSec(r.ts) / bSec) * bSec;
+    const key = bucket + '_' + r.linkId;
+    if (!rowMap[key]) rowMap[key] = { bucket, linkId: r.linkId, bpsSum: 0, cnt: 0 };
+    rowMap[key].bpsSum += r.bps;
+    rowMap[key].cnt++;
+  }
+  const allRows = Object.values(rowMap)
+    .map(e => ({ bucket: e.bucket, linkId: e.linkId, bps: e.bpsSum / e.cnt, util: (e.bpsSum / e.cnt) / capBps * 100 }))
+    .filter(e => e.util >= thWarn)
+    .sort((a, b) => a.bucket - b.bucket || a.linkId.localeCompare(b.linkId));
+
+  document.getElementById('modal-title').textContent = ee + ' — 閾値超え詳細';
+
+  let bodyHtml = '';
+  if (allRows.length === 0) {
+    bodyHtml = '<div style="text-align:center;padding:28px;color:var(--green)">✓ 閾値超えなし</div>';
+  } else {
+    bodyHtml = '<div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">' + allRows.length + '件</div>'
+      + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;">'
+      + '<thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">'
+      + '<th style="text-align:left;padding:4px 6px">時刻</th>'
+      + '<th style="text-align:left;padding:4px 6px">リンクID</th>'
+      + '<th style="text-align:right;padding:4px 6px">利用帯域</th>'
+      + '<th style="text-align:right;padding:4px 6px">収容率</th>'
+      + '</tr></thead><tbody>';
+    for (var i2 = 0; i2 < Math.min(allRows.length, 200); i2++) {
+      var r2 = allRows[i2];
+      var color2 = r2.util >= thAlert ? '255,80,30' : '255,190,20';
+      bodyHtml += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+        + '<td style="padding:4px 6px;color:var(--text-dim)">' + fmtBucketLabel(r2.bucket) + '</td>'
+        + '<td style="padding:4px 6px;color:var(--cyan)">' + r2.linkId + '</td>'
+        + '<td style="padding:4px 6px;text-align:right">' + fmtBps(r2.bps) + '</td>'
+        + '<td style="padding:4px 6px;text-align:right;font-weight:700;color:rgba(' + color2 + ',1)">' + r2.util.toFixed(1) + '%</td>'
+        + '</tr>';
+    }
+    if (allRows.length > 200) {
+      bodyHtml += '<tr><td colspan="4" style="padding:4px 6px;color:var(--text-dim)">… 他' + (allRows.length - 200) + '件</td></tr>';
+    }
+    bodyHtml += '</tbody></table></div>';
+  }
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  document.getElementById('modal-overlay').classList.add('open');
 }
 
 function showModal(h) {
   hideTooltip();
-  document.getElementById('modal-title').textContent = `${h.ee} — 経由リンク詳細`;
-  const wpts = Object.entries(h.bObj.waypoints);
+  const res = analysisResult;
+  if (!res) return;
+  const { thWarn, thAlert, capBps } = res;
+
+  // クリックした時刻スロット
+  const slotBucket = h.bObj.bucket;
+  const bucketSec = res.bucketSec || 3600;
+
+  // このスロットのrawRowsを取得
+  const slotRows = rawRows.filter(r => {
+    const b = Math.floor(tsSec(r.ts) / bucketSec) * bucketSec;
+    return r.ee === h.ee && b === slotBucket;
+  });
+
+  // linkId単位で集計（同一リンクは平均帯域を使用）
+  const linkMap = {};
+  for (const r of slotRows) {
+    if (!linkMap[r.linkId]) linkMap[r.linkId] = { linkId: r.linkId, bpsSum: 0, cnt: 0 };
+    linkMap[r.linkId].bpsSum += r.bps;
+    linkMap[r.linkId].cnt++;
+  }
+
+  let linkRows;
+  if (Object.keys(linkMap).length > 0) {
+    // rawRowsから集計
+    linkRows = Object.values(linkMap)
+      .map(e => ({ linkId: e.linkId, bps: e.bpsSum / e.cnt, util: (e.bpsSum / e.cnt) / capBps * 100 }))
+      .sort((a, b) => b.util - a.util);
+  } else {
+    // rawRowsにデータがない場合はbObj.waypointsから推定
+    linkRows = Object.entries(h.bObj.waypoints).map(([lid]) => ({
+      linkId: lid,
+      bps: h.bObj.avgBps,
+      util: h.util
+    }));
+  }
+
+  const alertRows = linkRows.filter(e => e.util >= thWarn);
+
+  document.getElementById('modal-title').textContent = `${h.ee} — ${fmtBucketLabel(slotBucket)}`;
   document.getElementById('modal-body').innerHTML = `
     <div style="margin-bottom:12px;font-size:12px;color:var(--text-dim)">
       収容率: <span style="color:rgba(${h.rgb},1);font-weight:700">${h.util.toFixed(1)}%</span>　
       平均帯域: <span style="color:var(--text)">${fmtBps(h.bObj.avgBps)}</span>
     </div>
-    <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:8px">
-      ${wpts.length} リンク経由
-    </div>
-    ${wpts.map(([lid,wp],i)=>`
-      <div class="link-row">
-        <span style="color:var(--text-dim);font-size:10px;min-width:20px">${i+1}.</span>
-        <span class="link-id">${lid}</span>
-        <span class="link-coords">${wp.lat.toFixed(4)}, ${wp.lon.toFixed(4)}</span>
-      </div>`).join('')}`;
+    ${alertRows.length > 0 ? `<div style="font-size:11px;font-weight:700;color:var(--alert);margin-bottom:8px">⚠ 閾値超えリンク（${alertRows.length}件）</div>` : ''}
+    <div style="overflow-x:auto">
+    <table style="width:100%;font-size:10px;font-family:'Space Mono',monospace;border-collapse:collapse">
+      <thead>
+        <tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:4px 6px">リンクID</th>
+          <th style="text-align:right;padding:4px 6px">利用帯域</th>
+          <th style="text-align:right;padding:4px 6px">収容率</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${linkRows.map(e => {
+          const color = e.util >= thAlert ? '255,80,30' : e.util >= thWarn ? '255,190,20' : '0,200,255';
+          return '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">'
+            + '<td style="padding:4px 6px;color:var(--cyan)">' + e.linkId + '</td>'
+            + '<td style="padding:4px 6px;text-align:right;color:var(--text)">' + fmtBps(e.bps) + '</td>'
+            + '<td style="padding:4px 6px;text-align:right;font-weight:700;color:rgba(' + color + ',1)">' + e.util.toFixed(1) + '%</td>'
+            + '</tr>';
+        }).join('')}
+      </tbody>
+    </table></div>`;
   document.getElementById('modal-overlay').classList.add('open');
 }
 function closeModal(e) {
