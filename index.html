@@ -1,0 +1,2199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Space Network Traffic Analyzer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+:root {
+  --bg-deep:#0a0e1a; --bg-panel:#0f1525; --bg-card:#141c30; --border:#1e2d4a;
+  --cyan:#00d4ff; --cyan-dim:rgba(0,212,255,.15); --cyan-glow:rgba(0,212,255,.4);
+  --alert:#ff6b35; --alert-dim:rgba(255,107,53,.15);
+  --green:#39ff14; --green-dim:rgba(57,255,20,.12);
+  --warn:#ffc832; --muted:#4a5570; --text:#c8d4ee; --text-dim:#7a8aaa;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg-deep);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;min-height:100vh;}
+
+/* Header */
+header{border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:14px;background:var(--bg-panel);position:relative;overflow:hidden;}
+header::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,var(--cyan-dim),transparent 60%);pointer-events:none;}
+.logo-icon{width:44px;height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 8px rgba(0,212,255,0.9)) drop-shadow(0 0 2px rgba(0,180,255,1));}
+.logo-dot{width:8px;height:8px;background:var(--cyan);border-radius:50%;box-shadow:0 0 6px var(--cyan);}
+.logo-text{font-family:'Space Mono',monospace;font-size:14px;letter-spacing:.08em;color:var(--cyan);line-height:1.2;}
+.logo-sub{font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase;}
+.header-status{margin-left:auto;font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);display:flex;gap:16px;align-items:center;}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px;}
+.status-dot.active{background:var(--green);box-shadow:0 0 6px var(--green);}
+
+/* Layout */
+.layout{display:flex;min-height:calc(100vh - 56px);}
+@media(max-width:768px){
+  .layout{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .sidebar{min-width:268px;width:268px;height:auto;min-height:calc(100vh - 56px);}
+  .main{min-width:500px;}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)!important;}
+}
+
+/* Sidebar */
+.sidebar{width:286px;flex-shrink:0;background:var(--bg-panel);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;}
+.sidebar-section{padding:18px 18px;border-bottom:1px solid var(--border);}
+.section-label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;}
+
+/* Drop zone */
+.drop-zone{border:1.5px dashed var(--border);border-radius:6px;padding:20px 14px;text-align:center;cursor:pointer;transition:all .2s;position:relative;}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--cyan);background:var(--cyan-dim);}
+.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;}
+.drop-icon{font-size:22px;margin-bottom:6px;}
+.drop-text{font-size:11px;color:var(--text-dim);line-height:1.5;}
+.drop-text em{color:var(--cyan);font-style:normal;}
+.btn-sample{width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text-dim);font-size:11px;padding:7px;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;}
+.btn-sample:hover{border-color:var(--cyan);color:var(--cyan);}
+
+/* Inputs */
+label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;}
+input[type=text],input[type=number],select{width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:7px 9px;outline:none;transition:border-color .15s;margin-bottom:9px;}
+input[type=text]:focus,input[type=number]:focus,select:focus{border-color:var(--cyan);}
+select option{background:var(--bg-card);}
+.cap-unit{display:flex;align-items:center;}
+.cap-unit input{border-radius:4px 0 0 4px!important;margin-bottom:0!important;flex:1;}
+.cap-unit-label{background:var(--bg-deep);border:1px solid var(--border);border-left:none;border-radius:0 4px 4px 0;padding:0 9px;height:33px;display:flex;align-items:center;font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);white-space:nowrap;}
+
+/* Run btn */
+.btn-run{width:100%;background:linear-gradient(135deg,#005f7f,#003f5a);border:1px solid var(--cyan);border-radius:5px;color:var(--cyan);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.05em;padding:11px;cursor:pointer;transition:all .2s;box-shadow:0 0 16px rgba(0,212,255,.12);}
+.btn-run:hover{background:linear-gradient(135deg,#007090,#004f6a);box-shadow:0 0 24px rgba(0,212,255,.28);}
+
+/* Main */
+.main{flex:1;overflow-y:scroll;padding:20px;display:flex;flex-direction:column;gap:20px;scrollbar-width:thin;scrollbar-color:var(--border) var(--bg-deep);}
+
+/* Cards */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.card-header{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg-panel);flex-wrap:wrap;gap:8px;}
+.card-title{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);}
+.card-body{padding:18px;}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.kpi{background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;padding:12px 14px;}
+.kpi-val{font-family:'Space Mono',monospace;font-size:24px;font-weight:700;color:var(--text);line-height:1;margin-bottom:4px;}
+.kpi-val.danger{color:var(--alert);text-shadow:0 0 10px rgba(255,107,53,.4);}
+  .kpi-click{cursor:pointer;transition:border-color .15s,background .15s;}
+  .kpi-click:hover{border-color:var(--cyan);background:rgba(0,212,255,0.06);}
+  .kpi-hint{font-size:9px;color:var(--text-dim);margin-top:5px;letter-spacing:.06em;}
+.kpi-label{font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;}
+
+/* Table */
+.util-table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:12px;}
+th{text-align:left;padding:8px 11px;color:var(--text-dim);font-size:10px;letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--bg-panel);}
+td{padding:7px 11px;border-bottom:1px solid rgba(30,45,74,.5);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(0,212,255,.03);}
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;}
+.badge-alert{background:var(--alert-dim);color:var(--alert);border:1px solid rgba(255,107,53,.3);}
+.badge-ok{background:var(--green-dim);color:var(--green);border:1px solid rgba(57,255,20,.25);}
+.badge-warn{background:rgba(255,200,50,.12);color:var(--warn);border:1px solid rgba(255,200,50,.3);}
+.bar-wrap{display:flex;align-items:center;gap:7px;}
+.bar-bg{flex:1;height:5px;background:var(--bg-deep);border-radius:3px;overflow:hidden;min-width:70px;}
+.bar-fill{height:100%;border-radius:3px;background:var(--green);transition:width .4s ease;}
+.bar-fill.warn{background:var(--warn);}
+.bar-fill.alert{background:var(--alert);box-shadow:0 0 6px rgba(255,107,53,.6);}
+.bar-pct{font-size:11px;min-width:38px;text-align:right;}
+canvas{display:block;width:100%;}
+.legend{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+.legend-item{display:flex;gap:5px;align-items:center;font-size:11px;color:var(--text-dim);}
+.legend-swatch{width:14px;height:4px;border-radius:2px;}
+.alert-banner{background:var(--alert-dim);border:1px solid rgba(255,107,53,.4);border-radius:6px;padding:11px 14px;display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.6;}
+.alert-banner-icon{font-size:15px;flex-shrink:0;margin-top:1px;}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-dim);display:flex;flex-direction:column;align-items:center;gap:12px;}
+.empty-icon{font-size:38px;opacity:.3;}
+.empty-title{font-family:'Space Mono',monospace;font-size:13px;color:var(--muted);}
+
+/* Map */
+#map-container{width:100%;position:relative;background:#050810;overflow:auto;min-height:420px;}
+#leaflet-map{width:100%;height:500px;min-height:400px;}
+#leaflet-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1000;}#map-container.globe-mode{touch-action:none;cursor:grab;}#map-container.globe-mode.dragging{cursor:grabbing;}
+#world-canvas{display:block;}
+
+/* Tooltip */
+#tooltip{position:fixed;background:rgba(9,14,26,.96);border:1px solid var(--cyan);border-radius:6px;padding:10px 14px;font-size:12px;pointer-events:none;display:none;z-index:999;max-width:260px;line-height:1.7;}
+#tooltip .tt-title{font-family:'Space Mono',monospace;color:var(--cyan);font-size:11px;margin-bottom:4px;}
+
+/* Modal */
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;}
+#modal-overlay.open{display:flex;}
+#modal{background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:24px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto;position:relative;}
+#modal-close{position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;}
+#modal-close:hover{color:var(--text);}
+#modal h3{font-family:'Space Mono',monospace;color:var(--cyan);font-size:13px;margin-bottom:14px;}
+.link-row{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.link-row:last-child{border-bottom:none;}
+.link-id{font-family:'Space Mono',monospace;color:var(--text-dim);font-size:11px;min-width:130px;}
+.link-coords{color:var(--text-dim);font-size:10px;}
+
+
+/* Map projection toggle */
+.proj-toggle{display:flex;gap:0;border:1px solid var(--border);border-radius:5px;overflow:hidden;}
+.proj-btn{background:transparent;border:none;color:var(--text-dim);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;padding:5px 11px;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.proj-btn.active{background:var(--cyan-dim);color:var(--cyan);}
+.proj-btn:hover:not(.active){color:var(--text);}
+
+/* ── Info tooltip ── */
+.info-wrap{position:relative;display:inline-flex;align-items:center;gap:5px;width:100%;}
+.info-wrap .section-label,.info-wrap label{flex:1;margin-bottom:0;}
+.info-btn{flex-shrink:0;width:16px;height:16px;border-radius:50%;background:rgba(0,212,255,0.15);
+  border:1px solid rgba(0,212,255,0.35);color:var(--cyan);font-size:9px;font-family:'Space Mono',monospace;
+  font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  line-height:1;transition:background .15s;position:relative;}
+.info-btn:hover{background:rgba(0,212,255,0.3);}
+/* tooltip は fixed でビューポート基準に表示 → サイドバーに隠れない */
+#info-float{position:fixed;background:rgba(8,14,30,0.97);border:1px solid rgba(0,212,255,0.4);
+  border-radius:7px;padding:10px 14px;font-size:11px;color:var(--text);line-height:1.7;
+  width:240px;z-index:99999;pointer-events:none;display:none;
+  box-shadow:0 6px 28px rgba(0,0,0,0.6);}
+#info-float::before{content:'';position:absolute;top:50%;transform:translateY(-50%);
+  border:6px solid transparent;}
+#info-float.from-left::before{left:-12px;border-right-color:rgba(0,212,255,0.4);}
+#info-float.from-right::before{right:-12px;border-left-color:rgba(0,212,255,0.4);}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--bg-deep);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+<script>
+// Leaflet をunpkgから読み込み、失敗時はcdnjsにフォールバック
+(function(){
+  function loadLeaflet(url, fallbackUrl) {
+    var s = document.createElement('script');
+    s.src = url;
+    s.onerror = function() {
+      if (fallbackUrl) {
+        var s2 = document.createElement('script');
+        s2.src = fallbackUrl;
+        document.head.appendChild(s2);
+      }
+    };
+    document.head.appendChild(s);
+  }
+  loadLeaflet(
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'
+  );
+})();
+</script>
+</head>
+<body>
+<div id="info-float"></div>
+<div id="tooltip"><div class="tt-title" id="tt-title"></div><div id="tt-body"></div></div>
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <button id="modal-close" onclick="closeModal()">✕</button>
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<header>
+  <div class="logo-icon">
+    <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- 背景ディスク -->
+      <circle cx="22" cy="22" r="21" fill="#061828" stroke="#00aaff" stroke-width="1.2"/>
+      <!-- 地球 -->
+      <circle cx="22" cy="22" r="10" fill="#1e5c9a" stroke="#3a8ada" stroke-width="1.2"/>
+      <!-- 大陸 -->
+      <ellipse cx="18" cy="19" rx="4" ry="3" fill="#2e8040"/>
+      <ellipse cx="25" cy="22" rx="3" ry="3.5" fill="#388a46"/>
+      <ellipse cx="20" cy="26" rx="2.2" ry="1.6" fill="#2a7038"/>
+      <!-- 海の輝き -->
+      <circle cx="17" cy="17" r="2.2" fill="rgba(120,200,255,0.4)"/>
+      <!-- 衛星軌道1 -->
+      <ellipse cx="22" cy="22" rx="18" ry="7" stroke="#00d4ff" stroke-width="1.2"
+        fill="none" transform="rotate(-30 22 22)" stroke-dasharray="3 2" opacity="0.85"/>
+      <!-- 衛星軌道2 -->
+      <ellipse cx="22" cy="22" rx="18" ry="6" stroke="#00aaff" stroke-width="1.0"
+        fill="none" transform="rotate(50 22 22)" stroke-dasharray="2.5 2" opacity="0.65"/>
+      <!-- 衛星1 -->
+      <g transform="rotate(-30 22 22)">
+        <circle cx="40" cy="22" r="2.5" fill="#00e8ff"/>
+        <line x1="36.5" y1="22" x2="43.5" y2="22" stroke="#00e8ff" stroke-width="1.2" opacity="0.7"/>
+        <line x1="40" y1="19.5" x2="40" y2="24.5" stroke="#00e8ff" stroke-width="1.2" opacity="0.7"/>
+      </g>
+      <!-- 衛星2 -->
+      <g transform="rotate(50 22 22)">
+        <circle cx="40" cy="22" r="1.8" fill="#66ccff"/>
+      </g>
+      <!-- 通信パルス右上 -->
+      <line x1="29" y1="16" x2="38" y2="8" stroke="#00d4ff" stroke-width="1.2" stroke-dasharray="2.5 1.5"/>
+      <circle cx="38" cy="8" r="1.8" fill="#00d4ff"/>
+      <!-- 通信パルス左下 -->
+      <line x1="15" y1="29" x2="7" y2="37" stroke="#00aaff" stroke-width="1.1" stroke-dasharray="2 1.5"/>
+      <circle cx="7" cy="37" r="1.5" fill="#00aaff"/>
+    </svg>
+  </div>
+  <div>
+    <div class="logo-text">SPACE NETWORK TRAFFIC SIMULATOR</div>
+    <div class="logo-sub">Network Traffic Analysis System</div>
+  </div>
+  <div class="header-status"><span id="status-text"><span class="status-dot"></span>NO DATA</span></div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="info-wrap"><div class="section-label">ログファイル読み込み</div><span class="info-btn" tabindex="0" data-tip="CSVフォーマット（ヘッダー行不要）&lt;br&gt;列順: 時刻(14桁), 区間名, 帯域(bps), リンクID, 緯度, 経度&lt;br&gt;例: 20250115080000,東京〜ロンドン,9500000,LNK-TYO-LON,35.68,139.65">i</span></div>
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept=".csv,.log,.txt">
+        <div class="drop-icon">📡</div>
+        <div class="drop-text">CSVをドロップ<br>または<em>クリックして選択</em></div>
+      </div>
+      <div id="file-info" style="margin-top:7px;font-size:10px;color:var(--text-dim);font-family:'Space Mono',monospace;"></div>
+      <div id="recent-files" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="info-wrap"><div class="section-label">分析期間</div><span class="info-btn" tabindex="0" data-tip="分析対象とする時間範囲を指定します。空欄の場合はログ全期間が対象になります。">i</span></div>
+      <label>開始</label>
+      <input type="text" id="range-start" placeholder="全期間" maxlength="14">
+      <label>終了</label>
+      <input type="text" id="range-end" placeholder="全期間" maxlength="14">
+      <div class="info-wrap"><label>時間集計単位</label><span class="info-btn" tabindex="0" data-tip="収容率を集計する時間の粒度です。細かいほど変化が詳しく見えますが、データ量が多くなります。">i</span></div>
+      <select id="agg-unit">
+        <option value="60">1分</option>
+        <option value="300">5分</option>
+        <option value="600">10分</option>
+        <option value="1800">30分</option>
+        <option value="3600" selected>1時間</option>
+      </select>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="info-wrap"><div class="section-label">リンク容量設定</div><span class="info-btn" tabindex="0" data-tip="全リンクに共通の回線容量（Mbps）を設定します。収容率はこの値に対する使用帯域の割合で計算されます。">i</span></div>
+      <label>回線容量</label>
+      <div class="cap-unit">
+        <input type="number" id="link-capacity-mbps" value="10" min="0.001" step="any">
+        <span class="cap-unit-label">Mbps</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="info-wrap"><div class="section-label">アラート閾値</div><span class="info-btn" tabindex="0" data-tip="収容率がこの値を超えると警告・危険として色分け表示されます。">i</span></div>
+      <label>警告</label>
+      <input type="number" id="thresh-warn" value="70" min="1" max="100">
+      <label>危険</label>
+      <input type="number" id="thresh-alert" value="90" min="1" max="100">
+    </div>
+
+    <div class="sidebar-section">
+      <button class="btn-run" onclick="runAnalysis()">▶ 実行</button>
+    </div>
+  </aside>
+
+  <main class="main" id="main-content">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">🌍</div>
+      <div class="empty-title">データを読み込んで分析を実行してください</div>
+      <div style="font-size:11px;color:var(--muted);max-width:340px;line-height:1.9;margin-top:4px">
+        CSVフォーマット（ヘッダー行不要）:<br>
+        <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cyan)">
+        時刻(14桁), 区間名, 帯域(bps), リンクID, 緯度, 経度
+        </span>
+        <div style="margin-top:6px;font-size:10px;color:var(--text-dim);line-height:1.7;text-align:left">
+        ・時刻: yyyymmddhhmmss<br>
+        ・区間名: 例）東京〜ロンドン<br>
+        ・帯域: リンク帯域(bps)<br>
+        ・リンクID: 任意の文字列<br>
+        ・緯度/経度: 10進数(-90〜90 / -180〜180)
+        </div>
+      </div>
+    </div>
+    <div id="result-area" style="display:none;flex-direction:column;gap:20px;"></div>
+  </main>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+let rawRows = [];
+let analysisResult = null;
+
+// ── ファイル履歴（ファイル名のみ記憶） ──────────────────────────────
+const RECENT_MAX = 5;
+
+function loadRecentFiles() {
+  try {
+    const saved = localStorage.getItem('recent-names');
+    const list = saved ? JSON.parse(saved) : [];
+    renderRecentFiles(list);
+  } catch(e) { renderRecentFiles([]); }
+}
+
+function updateRecentFiles(name, csvText) {
+  try {
+    let list = [];
+    try { const saved = localStorage.getItem('recent-names'); list = saved ? JSON.parse(saved) : []; } catch(e) {}
+    list = [name, ...list.filter(n => n !== name)].slice(0, RECENT_MAX);
+    try { localStorage.setItem('recent-names', JSON.stringify(list)); } catch(e) {}
+    renderRecentFiles(list);
+  } catch(e) {}
+}
+
+// クリックするとファイル選択ダイアログを開き、選んだファイルを読み込む
+function openFileForRecent(name) {
+  // ダイアログを開くための hidden input を一時生成
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv,.log,.txt';
+  input.onchange = e => {
+    const f = e.target.files[0];
+    if (f) readFile(f);
+  };
+  input.click();
+}
+
+function renderRecentFiles(list) {
+  const el = document.getElementById('recent-files');
+  if (!el) return;
+  if (!list || !list.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div style="font-size:9px;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">最近使ったファイル</div>
+    ${list.map(name => `
+      <div onclick="openFileForRecent('${String(name).replace(/'/g,"\'")}')"
+        style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cyan);
+          background:var(--cyan-dim);border:1px solid rgba(0,212,255,0.2);border-radius:4px;
+          padding:6px 8px;margin-bottom:4px;cursor:pointer;transition:background .15s;
+          display:flex;align-items:center;gap:6px;"
+        onmouseover="this.style.background='rgba(0,212,255,0.25)'"
+        onmouseout="this.style.background='var(--cyan-dim)'"
+        title="${String(name)} をクリックしてファイルを選択">
+        <span style="flex-shrink:0">📄</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${String(name)}</span>
+        <span style="color:var(--text-dim);font-size:9px;flex-shrink:0">▶</span>
+      </div>`).join('')}`;
+}
+
+window.addEventListener('load', () => { loadRecentFiles(); });
+
+// ══════════════════════════════════════════════════════
+// FILE HANDLING
+// ══════════════════════════════════════════════════════
+document.getElementById('file-input').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) readFile(f);
+  e.target.value = ''; // 同じファイルを再選択できるようリセット
+});
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if(f) readFile(f);
+});
+// drop-zone クリック: file-input以外の場所をクリックしたときのみダイアログ
+dz.addEventListener('click', e => {
+  if (e.target !== document.getElementById('file-input')) {
+    document.getElementById('file-input').click();
+  }
+});
+
+function readFile(f) {
+  const r = new FileReader();
+  r.onload = async ev => {
+    const csvText = ev.target.result;
+    rawRows = parseCSV(csvText);
+    document.getElementById('file-info').textContent = `✓ ${f.name}  (${rawRows.length} 件)`;
+    setStatus(true, `${rawRows.length} レコード読み込み済`);
+    updateRecentFiles(f.name, csvText);
+  };
+  r.readAsText(f, 'utf-8');
+}
+
+function parseCSV(text) {
+  const rows = [];
+  for (const line of text.trim().split(/\r?\n/)) {
+    if (!line.trim() || line.startsWith('#')) continue;
+    const c = line.split(',').map(s => s.trim());
+    if (c.length < 6) continue;
+    const [ts, ee, bps, linkId, lat, lon] = c;
+    if (isNaN(+bps) || isNaN(+lat) || isNaN(+lon)) continue;
+    rows.push({ ts: +ts, ee: String(ee), bps: +bps, linkId: String(linkId), lat: +lat, lon: +lon });
+  }
+  return rows;
+}
+
+// ══════════════════════════════════════════════════════
+// SAMPLE DATA — ボタンから内部ロード（履歴にも保存）
+// ══════════════════════════════════════════════════════
+function loadSampleData() {
+  rawRows = parseCSV(SAMPLE_CSV);
+  document.getElementById('file-info').textContent = `✓ サンプルデータ (${rawRows.length} 件)`;
+  setStatus(true, `サンプル ${rawRows.length} レコード`);
+  updateRecentFiles('サンプルデータ', SAMPLE_CSV);
+}
+
+// ══════════════════════════════════════════════════════
+// ANALYSIS
+// ══════════════════════════════════════════════════════
+function tsSec(ts14) {
+  const s = String(ts14).padStart(14,'0');
+  return Date.UTC(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),
+                  +s.slice(8,10),+s.slice(10,12),+s.slice(12,14)) / 1000;
+}
+
+function runAnalysis() {
+  stopPlay();
+  if (!rawRows.length) { alert('データを読み込んでください'); return; }
+
+  const rangeStart = +document.getElementById('range-start').value || 0;
+  const rangeEnd   = +document.getElementById('range-end').value   || 99999999999999;
+  const aggSec     = +document.getElementById('agg-unit').value;
+  const capBps     = (+document.getElementById('link-capacity-mbps').value || 10) * 1e6;
+  const thWarn     = +document.getElementById('thresh-warn').value;
+  const thAlert    = +document.getElementById('thresh-alert').value;
+
+  const filtered = rawRows.filter(r => r.ts >= rangeStart && r.ts <= rangeEnd);
+  if (!filtered.length) { alert('指定期間にデータがありません'); return; }
+
+  // --- bucket: (ee, bucket_epoch) → { bps[], links: Set, waypoints: Map<linkId,{lat,lon}> }
+  const eeMap = {}; // ee -> { bucket -> { bpsArr, waypoints:{linkId->{lat,lon}} } }
+
+  for (const r of filtered) {
+    const bucket = Math.floor(tsSec(r.ts) / aggSec) * aggSec;
+    if (!eeMap[r.ee]) eeMap[r.ee] = {};
+    if (!eeMap[r.ee][bucket]) eeMap[r.ee][bucket] = { bpsArr:[], waypoints:{} };
+    const slot = eeMap[r.ee][bucket];
+    slot.bpsArr.push(r.bps);
+    slot.waypoints[r.linkId] = { lat: r.lat, lon: r.lon };
+  }
+
+  // --- per-ee stats
+  const eeStats = {};
+  for (const [ee, bmap] of Object.entries(eeMap)) {
+    const buckets = Object.entries(bmap).sort((a,b)=>+a[0]-+b[0]).map(([b, slot]) => {
+      const avg = slot.bpsArr.reduce((s,v)=>s+v,0) / slot.bpsArr.length;
+      return { bucket:+b, avgBps:avg, util:avg/capBps*100, waypoints:slot.waypoints };
+    });
+    const utils = buckets.map(x=>x.util);
+    eeStats[ee] = {
+      buckets,
+      maxU: Math.max(...utils),
+      avgU: utils.reduce((s,v)=>s+v,0)/utils.length,
+      alertN: utils.filter(u=>u>=thAlert).length,
+      warnN:  utils.filter(u=>u>=thWarn&&u<thAlert).length,
+      avgBps: buckets.reduce((s,b)=>s+b.avgBps,0)/buckets.length,
+    };
+  }
+
+  // Collect all buckets across ee for slider
+  const allBuckets = [...new Set(
+    Object.values(eeStats).flatMap(s=>s.buckets.map(b=>b.bucket))
+  )].sort((a,b)=>a-b);
+
+  analysisResult = { eeStats, allBuckets, capBps, thWarn, thAlert, filtered };
+
+  // renderResults先にDOMを生成（スライダーはその中で作られる）
+  renderResults(analysisResult);
+
+  // スライダーはrenderResults()後に存在する
+  const slider = document.getElementById('time-slider');
+  if (slider) {
+    slider.min = 0; slider.max = allBuckets.length - 1; slider.value = 0;
+    updateSliderLabel(allBuckets[0]);
+    slider.oninput = () => {
+      stopPlay();
+      updateSliderLabel(allBuckets[+slider.value]);
+      drawWorldMap(analysisResult, allBuckets[+slider.value]);
+    };
+  }
+
+  setStatus(true, `分析完了 — ${Object.keys(eeStats).length} 通信区間`);
+}
+
+function updateSliderLabel(bucket) {
+  const d = new Date(bucket * 1000);
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('slider-label').textContent =
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} `+
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER RESULTS
+// ══════════════════════════════════════════════════════
+function renderResults(res) {
+  const { eeStats, allBuckets, thWarn, thAlert, filtered } = res;
+  document.getElementById('empty-state').style.display = 'none';
+  const area = document.getElementById('result-area');
+  area.style.display = 'flex'; area.style.flexDirection = 'column'; area.style.gap = '20px';
+  area.innerHTML = '';
+
+  const ees = Object.keys(eeStats);
+  const allUtils = ees.flatMap(e => eeStats[e].buckets.map(b=>b.util));
+  const alertCnt = ees.filter(e=>eeStats[e].maxU>=thAlert).length;
+  const peakUtil = Math.max(...allUtils);
+
+  // KPI
+  area.insertAdjacentHTML('beforeend',`
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">サマリー</span>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--green)"></span>正常</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--warn)"></span>警告 ≥${thWarn}%</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--alert)"></span>危険 ≥${thAlert}%</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="kpi-grid">
+          <div class="kpi kpi-click" onclick="showKpiDetail('routes')"><div class="kpi-val">${ees.length}</div><div class="kpi-label">通信区間数</div><div class="kpi-hint">▸ 詳細</div></div>
+          <div class="kpi kpi-click" onclick="showKpiDetail('peak')"><div class="kpi-val ${peakUtil>=thAlert?'danger':''}">${peakUtil.toFixed(1)}%</div><div class="kpi-label">最大収容率</div><div class="kpi-hint">▸ 詳細</div></div>
+          <div class="kpi kpi-click" onclick="showKpiDetail('danger')"><div class="kpi-val ${alertCnt>0?'danger':''}">${alertCnt}</div><div class="kpi-label">危険経路 (≥${thAlert}%)</div><div class="kpi-hint">▸ 詳細</div></div>
+          <div class="kpi kpi-click" onclick="showKpiDetail('slots')"><div class="kpi-val">${allBuckets.length}</div><div class="kpi-label">集計時間帯数</div><div class="kpi-hint">▸ 詳細</div></div>
+        </div>
+        ${alertCnt>0?`<div class="alert-banner" style="margin-top:14px"><span class="alert-banner-icon">⚠️</span><span>収容率が <strong>${thAlert}%</strong> を超過している経路が <strong>${alertCnt}</strong> 件検出されました。</span></div>`:''}
+      </div>
+    </div>`);
+
+  // World Map
+  const mapCard = document.createElement('div');
+  mapCard.className = 'card';
+  mapCard.innerHTML = `
+    <div class="card-header">
+      <span class="card-title" id="map-card-title">トラフィックマップ — 3D</span>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="proj-toggle">
+          <button class="proj-btn active" id="btn-globe" onclick="setProj('globe')">🌐 3D</button>
+          <button class="proj-btn"        id="btn-moll"  onclick="setProj('mercator')">🗺 2D</button>
+        </div>
+        <div style="display:flex;gap:3px;align-items:center;">
+          <button onclick="mapZoom(1)" style="width:26px;height:26px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--cyan);font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;" title="拡大">＋</button>
+          <button onclick="mapZoom(-1)" style="width:26px;height:26px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--cyan);font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;" title="縮小">－</button>
+        </div>
+        <span class="info-btn" data-tip="地図上の弧（トラフィック線）をクリックすると、その通信区間の経由リンクID・座標の一覧が表示されます。&lt;br&gt;弧の色は収容率を示します。&lt;br&gt;&lt;span style='color:#39ff14'&gt;■&lt;/span&gt; 正常　&lt;span style='color:#ffc832'&gt;■&lt;/span&gt; 警告　&lt;span style='color:#ff6b35'&gt;■&lt;/span&gt; 危険" tabindex="0" style="cursor:pointer;">i</span>
+      </div>
+    </div>
+    <div id="map-container">
+      <div id="leaflet-map" style="display:none;"></div>
+      <canvas id="globe-canvas" style="display:none;position:relative;width:100%;cursor:grab;touch-action:none;"></canvas>
+      <canvas id="globe-arc-canvas" style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
+      <canvas id="world-canvas" style="display:none;position:absolute;top:0;left:0;z-index:2;cursor:default;"></canvas>
+      <canvas id="leaflet-overlay" style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
+      <canvas id="globe-overlay"   style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
+    </div>
+    <div style="background:var(--bg-panel);border-top:1px solid var(--border);padding:12px 18px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="btn-play" onclick="togglePlay()" style="flex-shrink:0;width:36px;height:36px;background:linear-gradient(135deg,#005f7f,#003f5a);border:1px solid var(--cyan);border-radius:5px;color:var(--cyan);font-family:'Space Mono',monospace;font-size:14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;">▶</button>
+        <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+          <input type="range" id="time-slider" min="0" max="0" value="0" style="width:100%;accent-color:var(--cyan);cursor:pointer;">
+          <div id="slider-label" style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cyan);text-align:center;">—</div>
+        </div>
+        <select id="play-speed" style="margin-bottom:0;width:72px;font-size:11px;padding:5px 5px;flex-shrink:0;">
+          <option value="1500">遅い</option>
+          <option value="800" selected>普通</option>
+          <option value="300">速い</option>
+          <option value="100">最速</option>
+        </select>
+      </div>
+    </div>`;
+  area.appendChild(mapCard);
+  setTimeout(() => drawWorldMap(res, allBuckets[0]), 120);
+
+  // EE Table
+  const tableRows = Object.entries(eeStats).sort((a,b)=>b[1].maxU-a[1].maxU).map(([ee,s])=>{
+    const lvl = s.maxU>=thAlert?'alert':s.maxU>=thWarn?'warn':'ok';
+    const lbl = lvl==='alert'?'危険':lvl==='warn'?'警告':'正常';
+    const pct = Math.min(s.maxU,100);
+    return `<tr>
+      <td style="font-family:'Space Mono',monospace;white-space:nowrap">${ee}</td>
+      <td><span class="badge badge-${lvl}">${lbl}</span></td>
+      <td><div class="bar-wrap">
+        <div class="bar-bg"><div class="bar-fill ${lvl}" style="width:${pct}%"></div></div>
+        <span class="bar-pct" style="color:${lvl==='alert'?'var(--alert)':lvl==='warn'?'var(--warn)':'var(--green)'}">${s.maxU.toFixed(1)}%</span>
+      </div></td>
+      <td>${s.avgU.toFixed(1)}%</td>
+      <td>${s.alertN>0?`<span style="color:var(--alert)">${s.alertN}</span>`:0} / ${s.warnN}</td>
+      <td style="white-space:nowrap">${fmtBps(s.avgBps)}</td>
+    </tr>`;
+  }).join('');
+
+  area.insertAdjacentHTML('beforeend',`
+    <div class="card">
+      <div class="card-header"><span class="card-title">通信区間別 収容率サマリー</span></div>
+      <div class="card-body" style="padding:0"><div class="util-table-wrap">
+        <table><thead><tr>
+          <th>通信区間</th><th>ステータス</th><th>最大収容率</th>
+          <th>平均収容率</th><th>危険 / 警告回数</th><th>平均帯域</th>
+        </tr></thead><tbody>${tableRows}</tbody></table>
+      </div></div>
+    </div>`);
+
+  // Timeline chart
+  const tlCard = document.createElement('div');
+  tlCard.className = 'card';
+  tlCard.innerHTML = `
+    <div class="card-header">
+      <span class="card-title">時間別収容率推移</span>
+      <select id="ee-select" style="margin-bottom:0;width:auto;font-size:11px">
+        ${ees.map(e=>`<option value="${e}">${e}</option>`).join('')}
+      </select>
+    </div>
+    <div class="card-body"><canvas id="timeline-canvas" height="180"></canvas></div>`;
+  area.appendChild(tlCard);
+  const sel = tlCard.querySelector('#ee-select');
+  sel.onchange = () => drawTimeline(eeStats[sel.value].buckets, thWarn, thAlert);
+  setTimeout(() => drawTimeline(eeStats[ees[0]].buckets, thWarn, thAlert), 80);
+}
+
+// ══════════════════════════════════════════════════════
+// MOLLWEIDE PROJECTION
+// ══════════════════════════════════════════════════════
+function mollweide(lon, lat, W, H) {
+  // Returns canvas [x, y] for given lon/lat (degrees)
+  const lonRad = lon * Math.PI / 180;
+  const latRad = lat * Math.PI / 180;
+  let theta = latRad;
+  for (let i = 0; i < 20; i++) {
+    theta -= (2*theta + Math.sin(2*theta) - Math.PI*Math.sin(latRad)) / (2 + 2*Math.cos(2*theta));
+  }
+  const x = (2 * Math.SQRT2 / Math.PI) * lonRad * Math.cos(theta);
+  const y = Math.SQRT2 * Math.sin(theta);
+  // Map [-2√2..2√2] x [-√2..√2] to canvas
+  const cx = W/2 + x * W / (4 * Math.SQRT2);
+  const cy = H/2 - y * H / (2 * Math.SQRT2);
+  return [cx, cy];
+}
+
+// ══════════════════════════════════════════════════════
+// WORLD MAP CANVAS
+// ══════════════════════════════════════════════════════
+const WORLD_LAND = [
+  // ── North America (main) ──
+  {name:'NA',fill:'#4a7a3a',stroke:'#3a6a2a',pts:[
+    [-168,72],[-162,70],[-156,72],[-148,70],[-140,60],[-136,58],[-130,54],[-126,50],[-124,48],
+    [-122,47],[-120,43],[-117,33],[-117,28],[-109,23],[-104,19],[-99,17],[-90,16],[-87,16],
+    [-84,10],[-78,8],[-76,9],[-83,10],[-84,16],[-88,16],[-90,18],[-88,21],[-87,24],[-90,29],
+    [-89,30],[-85,30],[-82,30],[-80,25],[-82,24],[-81,26],[-80,29],[-81,31],[-80,34],
+    [-76,35],[-75,38],[-74,41],[-70,42],[-67,44],[-67,47],[-66,45],[-60,46],[-64,48],
+    [-66,50],[-60,47],[-53,48],[-54,52],[-58,55],[-60,58],[-64,60],[-67,63],[-68,65],
+    [-72,67],[-76,69],[-80,71],[-85,73],[-90,74],[-100,74],[-110,74],[-120,74],[-130,72],
+    [-140,72],[-150,70],[-158,68],[-162,66],[-166,68],[-168,72]
+  ]},
+  // ── Alaska ──
+  {name:'AK',fill:'#4e7e44',stroke:'#3a6030',pts:[
+    [-141,60],[-137,59],[-134,57],[-130,55],[-130,56],[-136,59],[-140,61],
+    [-145,62],[-150,61],[-154,60],[-158,57],[-162,55],[-165,54],[-168,54],
+    [-168,60],[-166,64],[-164,66],[-162,66],[-158,66],[-154,67],[-150,66],
+    [-146,64],[-142,62],[-141,60]
+  ]},
+  // ── Greenland ──
+  {name:'GL',fill:'#c8dce8',stroke:'#a0c0d8',pts:[
+    [-44,60],[-40,63],[-36,66],[-30,69],[-24,72],[-18,76],[-18,80],
+    [-22,83],[-30,84],[-40,84],[-48,83],[-54,80],[-58,77],[-56,72],
+    [-52,68],[-48,65],[-44,62],[-44,60]
+  ]},
+  // ── Iceland ──
+  {name:'IS',fill:'#b0c8d8',stroke:'#90a8c0',pts:[
+    [-24,63],[-20,63],[-14,64],[-12,65],[-14,67],[-18,66],[-22,65],[-24,64],[-24,63]
+  ]},
+  // ── South America ──
+  {name:'SA',fill:'#3a8840',stroke:'#287030',pts:[
+    [-80,10],[-77,8],[-73,11],[-68,12],[-62,12],[-60,8],[-52,5],[-50,2],
+    [-48,-1],[-50,-5],[-48,-8],[-44,-10],[-40,-14],[-38,-17],[-40,-20],
+    [-40,-23],[-43,-23],[-44,-24],[-44,-28],[-48,-28],[-50,-30],[-52,-33],
+    [-53,-34],[-57,-38],[-62,-40],[-65,-44],[-68,-47],[-70,-51],[-68,-53],
+    [-70,-55],[-68,-56],[-65,-55],[-66,-52],[-64,-50],[-66,-46],[-68,-44],
+    [-66,-42],[-62,-40],[-58,-36],[-56,-34],[-58,-30],[-56,-26],[-52,-22],
+    [-48,-18],[-46,-14],[-42,-12],[-40,-8],[-38,-5],[-36,-5],[-34,-6],
+    [-35,-9],[-38,-10],[-40,-8],[-38,-5],[-42,-4],[-44,-3],[-46,-1],
+    [-50,2],[-54,4],[-58,6],[-62,6],[-66,2],[-70,2],[-72,5],[-74,8],
+    [-76,8],[-78,8],[-80,10]
+  ]},
+  // ── Europe ──
+  {name:'EU',fill:'#5a8e48',stroke:'#487836',pts:[
+    [-9,38],[-8,36],[-5,36],[-2,36],[2,37],[4,38],[6,43],[7,44],[8,46],
+    [10,44],[12,44],[14,45],[16,46],[18,45],[20,42],[22,40],[24,38],
+    [26,38],[28,41],[30,42],[28,44],[26,46],[24,48],[22,50],[20,52],
+    [18,54],[16,55],[14,56],[12,56],[10,55],[8,55],[6,57],[5,58],
+    [4,60],[6,62],[8,63],[12,64],[14,65],[16,68],[18,70],[20,70],
+    [24,68],[28,65],[28,63],[26,60],[24,60],[22,58],[20,56],[18,56],
+    [16,58],[14,56],[12,58],[10,58],[8,56],[6,54],[4,52],[2,52],
+    [0,50],[-2,48],[-4,48],[-6,44],[-8,42],[-9,38]
+  ]},
+  // ── UK ──
+  {name:'UK',fill:'#5a8e48',stroke:'#487836',pts:[
+    [-5,50],[-3,50],[-2,52],[0,52],[0,54],[-2,56],[-4,58],[-6,58],
+    [-8,56],[-8,54],[-6,52],[-5,50]
+  ]},
+  // ── Ireland ──
+  {name:'IE',fill:'#5a9048',stroke:'#487836',pts:[
+    [-10,52],[-8,52],[-6,52],[-6,54],[-8,56],[-10,54],[-10,52]
+  ]},
+  // ── Scandinavia ──
+  {name:'SC',fill:'#5a8844',stroke:'#487030',pts:[
+    [4,58],[6,58],[8,58],[10,58],[12,56],[14,56],[16,57],[18,58],
+    [20,60],[20,63],[18,65],[18,68],[20,70],[22,70],[24,68],[26,66],
+    [28,65],[26,62],[24,60],[22,58],[20,56],[18,56],[16,58],[14,56],
+    [12,58],[10,58],[8,56],[6,57],[4,58]
+  ]},
+  // ── Africa ──
+  {name:'AF',fill:'#8aa040',stroke:'#6a8030',pts:[
+    [-6,35],[0,35],[4,37],[8,37],[10,37],[12,34],[12,32],[14,30],
+    [16,28],[18,26],[20,22],[22,18],[24,14],[24,10],[26,8],[28,4],
+    [30,2],[34,-2],[36,-4],[38,-6],[40,-8],[40,-12],[38,-16],[36,-18],
+    [34,-20],[34,-24],[32,-28],[30,-32],[26,-34],[22,-34],[18,-32],
+    [16,-30],[14,-26],[12,-22],[10,-18],[8,-14],[6,-10],[4,-6],[2,-2],
+    [0,4],[-2,6],[-4,8],[-6,10],[-8,14],[-12,16],[-14,20],[-16,24],
+    [-16,28],[-14,32],[-12,34],[-8,36],[-6,35]
+  ]},
+  // ── Madagascar ──
+  {name:'MG',fill:'#7a9840',stroke:'#607830',pts:[
+    [44,-12],[48,-14],[50,-18],[50,-22],[48,-26],[46,-26],[44,-22],[44,-16],[44,-12]
+  ]},
+  // ── Asia (main) ──
+  {name:'AS',fill:'#5a8c48',stroke:'#487438',pts:[
+    [26,42],[28,42],[30,42],[34,36],[36,36],[38,34],[40,34],[42,38],
+    [44,40],[46,42],[48,42],[52,40],[56,38],[60,36],[62,32],[64,28],
+    [66,24],[68,22],[70,22],[72,22],[74,22],[74,18],[76,14],[80,10],
+    [82,8],[84,8],[86,10],[88,22],[90,22],[92,24],[94,26],[96,28],
+    [98,22],[100,18],[100,14],[102,10],[104,4],[104,2],[104,-2],[106,-6],
+    [108,-6],[110,-6],[112,-4],[114,2],[116,4],[118,4],[120,4],[122,6],
+    [124,10],[126,8],[128,10],[130,30],[132,34],[134,36],[136,36],
+    [138,36],[140,38],[141,39],[142,40],[142,41],[141,42],[140,43],
+    [138,40],[137,38],[136,36],[134,34],[132,33],[130,31],[128,34],
+    [130,38],[132,42],[134,44],[136,46],[134,48],[130,50],[126,52],
+    [122,54],[118,54],[114,54],[110,52],[106,50],[102,50],[98,52],
+    [94,52],[90,50],[86,46],[82,46],[78,44],[74,42],[70,42],[66,44],
+    [62,44],[58,44],[54,42],[50,44],[46,44],[42,42],[38,40],[34,38],
+    [30,42],[26,42]
+  ]},
+  // ── Japan (Honshu) ──
+  {name:'JP',fill:'#528840',stroke:'#407030',pts:[
+    [130,31],[131,32],[132,33],[133,34],[134,34],[135,35],[136,36],
+    [137,36],[138,37],[140,38],[141,39],[142,40],[142,41],[141,42],
+    [140,43],[139,42],[138,40],[137,38],[136,36],[134,34],[132,33],
+    [131,32],[130,31]
+  ]},
+  // ── Hokkaido ──
+  {name:'HK',fill:'#528840',stroke:'#407030',pts:[
+    [141,43],[142,44],[144,44],[144,46],[142,46],[140,44],[140,43],[141,43]
+  ]},
+  // ── Korean Peninsula ──
+  {name:'KR',fill:'#5a8844',stroke:'#487034',pts:[
+    [126,34],[128,36],[130,38],[130,36],[128,34],[126,34]
+  ]},
+  // ── Australia ──
+  {name:'AU',fill:'#a06838',stroke:'#885028',pts:[
+    [114,-22],[116,-20],[118,-18],[120,-18],[122,-18],[124,-18],[126,-16],
+    [128,-14],[130,-12],[132,-12],[134,-12],[136,-12],[138,-14],[140,-14],
+    [142,-12],[144,-14],[146,-16],[148,-18],[150,-22],[152,-24],[152,-28],
+    [150,-30],[148,-34],[146,-38],[144,-38],[142,-38],[140,-36],[138,-34],
+    [136,-34],[134,-32],[132,-32],[130,-32],[128,-32],[126,-34],[124,-32],
+    [122,-30],[120,-28],[118,-26],[116,-24],[114,-22]
+  ]},
+  // ── New Zealand ──
+  {name:'NZ',fill:'#4e8040',stroke:'#3c6830',pts:[
+    [172,-34],[174,-36],[176,-38],[178,-38],[178,-42],[176,-44],
+    [172,-44],[170,-42],[170,-38],[172,-34]
+  ]},
+  // ── Philippines ──
+  {name:'PH',fill:'#489050',stroke:'#367038',pts:[
+    [118,8],[120,10],[122,12],[124,14],[122,16],[120,14],[118,12],[118,8]
+  ]},
+  // ── Indonesia (simplified) ──
+  {name:'ID',fill:'#489050',stroke:'#367038',pts:[
+    [96,-4],[102,-4],[108,-6],[112,-8],[114,-8],[116,-8],[106,-8],[102,-6],[96,-4]
+  ]},
+  // ── Sri Lanka ──
+  {name:'SL',fill:'#3e8848',stroke:'#2c6e30',pts:[
+    [80,10],[82,8],[82,6],[80,6],[80,8],[80,10]
+  ]},
+  // ── Cuba ──
+  {name:'CU',fill:'#4e9050',stroke:'#3c7038',pts:[
+    [-85,22],[-82,22],[-80,22],[-76,22],[-75,20],[-78,20],[-82,20],[-84,20],[-85,22]
+  ]},
+];
+
+// ── Shared land-drawing helper ──────────────────────────────────────────
+function drawLandColored(ctx, projectFn, isGlobe, centerLon) {
+
+  function drawPoly(rawPts, fill, stroke, lw, shadow) {
+    if (isGlobe) {
+      ctx.beginPath(); let first=true;
+      for (const [lon,lat] of rawPts) {
+        const p=projectFn(lon,lat);
+        if (!p.visible){first=true;continue;}
+        first?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py); first=false;
+      }
+      ctx.closePath();
+    } else {
+      // Flat: normalise longitudes relative to centerLon and split at antimeridian
+      const pts = rawPts.map(([lon,lat])=>{
+        let d=lon-(centerLon||0); while(d>180)d-=360; while(d<-180)d+=360;
+        return [d+(centerLon||0), lat];
+      });
+      const segs=[]; let seg=[pts[0]];
+      for(let i=1;i<pts.length;i++){
+        const dLon=pts[i][0]-pts[i-1][0];
+        if(Math.abs(dLon)>180){segs.push(seg);seg=[pts[i]];}
+        else seg.push(pts[i]);
+      }
+      segs.push(seg);
+      for(const s of segs){
+        if(s.length<2) continue;
+        ctx.beginPath(); let first=true;
+        for(const [lon,lat] of s){
+          const [px,py]=projectFn(lon,lat);
+          first?ctx.moveTo(px,py):ctx.lineTo(px,py); first=false;
+        }
+        ctx.closePath();
+      }
+    }
+    if(shadow){
+      ctx.shadowColor='rgba(0,0,0,0.55)'; ctx.shadowBlur=6; ctx.shadowOffsetX=1; ctx.shadowOffsetY=2;
+    }
+    ctx.fillStyle=fill; ctx.fill();
+    ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
+    if(stroke){ctx.strokeStyle=stroke; ctx.lineWidth=lw; ctx.stroke();}
+  }
+
+  // ── Draw each region with its own fill colour ───────────────────────────
+  for (const region of WORLD_LAND) {
+    drawPoly(region.pts, region.fill, region.stroke, 0.6, true);
+  }
+
+  // ── Terrain overlays (deserts, ice, rainforest) ─────────────────────────
+  const zones = [
+    // Sahara
+    {f:'rgba(195,165,85,0.78)',s:null,
+     p:[[-6,36],[4,34],[10,34],[16,32],[20,30],[24,28],[28,26],[32,24],[36,22],[40,20],
+        [36,16],[30,16],[24,18],[20,20],[16,22],[12,24],[8,24],[4,22],[0,20],[-4,22],[-6,26],[-6,30],[-6,36]]},
+    // Arabian Desert
+    {f:'rgba(190,158,80,0.76)',s:null,
+     p:[[36,22],[40,20],[44,18],[50,14],[56,16],[60,22],[58,26],[56,28],[52,30],[48,30],[44,28],[40,26],[36,22]]},
+    // Australian Outback
+    {f:'rgba(180,100,40,0.72)',s:null,
+     p:[[116,-20],[120,-18],[126,-18],[130,-18],[134,-18],[138,-20],[138,-26],[134,-28],[130,-30],[126,-30],[120,-28],[116,-24],[116,-20]]},
+    // Gobi
+    {f:'rgba(185,162,100,0.70)',s:null,
+     p:[[90,40],[96,40],[102,42],[108,42],[110,40],[108,38],[104,38],[100,40],[96,40],[92,40],[90,40]]},
+    // Amazon
+    {f:'rgba(20,90,35,0.72)',s:null,
+     p:[[-74,2],[-70,4],[-64,4],[-60,4],[-56,4],[-52,2],[-50,0],[-50,-4],[-52,-8],[-56,-12],[-60,-12],[-64,-10],[-68,-8],[-70,-4],[-74,0],[-74,2]]},
+    // Congo
+    {f:'rgba(20,90,35,0.72)',s:null,
+     p:[[12,2],[16,4],[20,4],[24,2],[26,0],[26,-4],[24,-6],[20,-6],[16,-4],[12,-2],[12,2]]},
+    // SE Asia jungle
+    {f:'rgba(20,90,35,0.68)',s:null,
+     p:[[100,6],[104,6],[108,4],[112,2],[114,-2],[112,-6],[108,-8],[104,-4],[100,0],[98,4],[100,6]]},
+    // Siberian taiga
+    {f:'rgba(40,72,40,0.65)',s:null,
+     p:[[60,56],[80,56],[100,56],[120,56],[130,60],[120,64],[100,64],[80,60],[60,58],[60,56]]},
+    // NA boreal
+    {f:'rgba(40,72,40,0.65)',s:null,
+     p:[[-140,56],[-110,56],[-80,56],[-66,50],[-80,48],[-110,52],[-140,54],[-140,56]]},
+    // Greenland ice
+    {f:'rgba(210,235,250,0.90)',s:'rgba(180,215,238,0.4)',
+     p:[[-46,64],[-40,66],[-34,68],[-26,72],[-20,76],[-18,80],[-24,84],[-34,84],[-44,82],[-52,80],[-58,76],[-56,72],[-52,68],[-48,66],[-46,64]]},
+    // Antarctica
+    {f:'rgba(220,242,255,0.92)',s:'rgba(190,225,245,0.4)',
+     p:[[-180,-72],[-120,-66],[-60,-72],[0,-70],[60,-68],[120,-68],[180,-72],[180,-90],[-180,-90],[-180,-72]]},
+    // Arctic
+    {f:'rgba(200,228,248,0.80)',s:null,
+     p:[[-180,76],[-90,78],[0,82],[90,76],[180,76],[180,90],[-180,90],[-180,76]]},
+    // Tibetan plateau
+    {f:'rgba(148,168,128,0.70)',s:null,
+     p:[[76,30],[88,30],[98,28],[100,26],[90,26],[84,28],[78,28],[76,30]]},
+  ];
+
+  for(const z of zones){
+    drawPoly(z.p, z.f, z.s, 0.3, false);
+  }
+}
+
+// ── Playback ──────────────────────────────────────────────────────────────
+function togglePlay() {
+  isPlaying ? stopPlay() : startPlay();
+}
+
+function startPlay() {
+  const slider = document.getElementById('time-slider');
+  if (!slider || +slider.max === 0) return;
+  isPlaying = true;
+  document.getElementById('btn-play').textContent = '⏹';
+  document.getElementById('btn-play').style.borderColor = 'var(--alert)';
+  document.getElementById('btn-play').style.color = 'var(--alert)';
+
+  function step() {
+    const slider = document.getElementById('time-slider');
+    if (!slider || !isPlaying) return;
+    let next = +slider.value + 1;
+    if (next > +slider.max) next = 0; // loop
+    slider.value = next;
+    if (analysisResult) {
+      const bucket = analysisResult.allBuckets[next];
+      updateSliderLabel(bucket);
+      drawWorldMap(analysisResult, bucket);
+    }
+    const ms = +document.getElementById('play-speed').value;
+    playbackTimer = setTimeout(step, ms);
+  }
+  const ms = +document.getElementById('play-speed').value;
+  playbackTimer = setTimeout(step, ms);
+}
+
+function stopPlay() {
+  isPlaying = false;
+  clearTimeout(playbackTimer);
+  playbackTimer = null;
+  const btn = document.getElementById('btn-play');
+  if (btn) {
+    btn.textContent = '▶';
+    btn.style.borderColor = 'var(--cyan)';
+    btn.style.color = 'var(--cyan)';
+  }
+}
+
+
+// ── Projection mode switch ─────────────────────────────────────────────
+function setProj(mode) {
+  projMode = mode;
+  dragState = null;
+  cancelAnimationFrame(animFrameId);
+  cancelAnimationFrame(leafletAnimId);
+
+  document.getElementById('btn-globe').classList.toggle('active', mode==='globe');
+  document.getElementById('btn-moll' ).classList.toggle('active', mode==='mercator');
+  document.getElementById('map-card-title').textContent =
+    mode === 'globe' ? 'トラフィックマップ — 3D' : 'トラフィックマップ — 2D';
+
+  // 全要素を非表示 → 各描画関数が必要なものだけ表示する
+  ['world-canvas','leaflet-map','leaflet-overlay','globe-canvas','globe-arc-canvas']
+    .forEach(id => { const el=document.getElementById(id); if(el) el.style.display='none'; });
+
+  if (lastRes && lastRenderBucket !== null) drawWorldMap(lastRes, lastRenderBucket);
+}
+
+
+
+// ──────────────────────────────────────────────────────────────────────
+// GLOBE: Leaflet衛星地図（円形） + canvasオーバーレイ弧
+// ──────────────────────────────────────────────────────────────────────
+
+
+function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
+  if (typeof L === 'undefined' || !lmap) return;
+  if (mode === 'globe') cancelAnimationFrame(globeAnimId);
+  else                  cancelAnimationFrame(leafletAnimId);
+
+  const mapDiv = document.getElementById(mode === 'globe' ? 'globe-map' : 'leaflet-map');
+  const ovl    = document.getElementById(ovlId);
+  if (!mapDiv || !ovl || !lmap) return;
+
+  const W = mapDiv.offsetWidth, H = mapDiv.offsetHeight;
+  const dpr = window.devicePixelRatio || 1;
+  ovl.width = W*dpr; ovl.height = H*dpr;
+  ovl.style.width = W+'px'; ovl.style.height = H+'px';
+
+  // globe-overlayの位置をglobeMapに合わせる
+  if (mode === 'globe') {
+    const mRect = mapDiv.getBoundingClientRect();
+    const cRect = document.getElementById('map-container').getBoundingClientRect();
+    ovl.style.left = (mRect.left - cRect.left) + 'px';
+    ovl.style.top  = (mRect.top  - cRect.top ) + 'px';
+  }
+
+  const ctx = ovl.getContext('2d');
+  ctx.clearRect(0,0,W*dpr,H*dpr);
+  ctx.save(); ctx.scale(dpr,dpr);
+
+  function project(lon, lat) {
+    const pt = lmap.latLngToContainerPoint(L.latLng(lat, lon));
+    return [pt.x, pt.y];
+  }
+
+  const { eeStats, thWarn, thAlert } = res;
+  hitAreas = [];
+  const nodeList = [];
+
+  for (const [ee, stat] of Object.entries(eeStats)) {
+    const bObj = stat.buckets.reduce((p,c) =>
+      Math.abs(c.bucket-activeBucket)<Math.abs(p.bucket-activeBucket)?c:p);
+    const util = bObj.util;
+    const wpts = Object.entries(bObj.waypoints);
+    if (wpts.length < 2) continue;
+
+    let rgb;
+    if (util >= thAlert)     rgb = '255,80,30';
+    else if (util >= thWarn) rgb = '255,190,20';
+    else                     rgb = '0,180,255';
+
+    const maxBps = Math.max(...Object.values(eeStats).map(s=>s.avgBps));
+    const thick  = 2.0 + (bObj.avgBps/maxBps)*5;
+
+    const [,first] = wpts[0], [,last] = wpts[wpts.length-1];
+    const arcPts = greatCirclePoints(first.lon, first.lat, last.lon, last.lat, 120);
+    // 経度を連続的に正規化（太平洋越え経路が折れ曲がらないよう）
+    const cLon = lmap ? lmap.getCenter().lng : 139.69;
+    const normArc = [];
+    {
+      let prevN = arcPts[0][0] - cLon;
+      while(prevN >  180) prevN -= 360;
+      while(prevN < -180) prevN += 360;
+      normArc.push([prevN + cLon, arcPts[0][1]]);
+      for(let i=1;i<arcPts.length;i++){
+        let c = arcPts[i][0] - cLon;
+        while(c >  180) c -= 360;
+        while(c < -180) c += 360;
+        let d = c - prevN;
+        if(d >  180) d -= 360;
+        if(d < -180) d += 360;
+        prevN += d;
+        normArc.push([prevN + cLon, arcPts[i][1]]);
+      }
+    }
+    const sp = normArc.map(([lo,la]) => project(lo,la));
+
+    // 画面外ジャンプでのみ分割（連続化後はほぼ不要だが保険）
+    const segs = []; let seg = [sp[0]];
+    for (let i=1;i<sp.length;i++) {
+      if (Math.abs(sp[i][0]-sp[i-1][0]) > W*0.4) { segs.push(seg); seg=[sp[i]]; }
+      else seg.push(sp[i]);
+    }
+    segs.push(seg);
+
+    for (const s of segs) {
+      if (s.length < 2) continue;
+      ctx.beginPath(); s.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+      ctx.strokeStyle=`rgba(${rgb},0.08)`; ctx.lineWidth=thick*7;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+
+      ctx.beginPath(); s.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+      ctx.strokeStyle=`rgba(${rgb},0.20)`; ctx.lineWidth=thick*3;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+
+      ctx.beginPath(); s.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+      ctx.strokeStyle=`rgba(${rgb},0.92)`; ctx.lineWidth=thick;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+    }
+
+    // Flow dots
+    const t=(Date.now()/2200)%1;
+    for(let k=0;k<3;k++){
+      const ti=(t+k/3)%1, idx=Math.floor(ti*(sp.length-1));
+      const [dx,dy]=sp[idx];
+      const dg=ctx.createRadialGradient(dx,dy,0,dx,dy,7);
+      dg.addColorStop(0,`rgba(${rgb},0.9)`); dg.addColorStop(1,`rgba(${rgb},0)`);
+      ctx.beginPath(); ctx.arc(dx,dy,7,0,Math.PI*2); ctx.fillStyle=dg; ctx.fill();
+      ctx.beginPath(); ctx.arc(dx,dy,2.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fill();
+    }
+
+    const mid = sp[Math.floor(sp.length/2)];
+    hitAreas.push({ee,util,bObj,mx:mid[0],my:mid[1],rgb,sp,thick});
+
+    wpts.forEach(([,wp],i)=>{
+      const [nx,ny]=project(wp.lon,wp.lat);
+      nodeList.push({nx,ny,isEnd:i===0||i===wpts.length-1,rgb});
+    });
+  }
+
+  // Nodes
+  for(const{nx,ny,isEnd,rgb}of nodeList){
+    if(isEnd){
+      const ng=ctx.createRadialGradient(nx,ny,2,nx,ny,10);
+      ng.addColorStop(0,`rgba(${rgb},0.55)`); ng.addColorStop(1,`rgba(${rgb},0)`);
+      ctx.beginPath(); ctx.arc(nx,ny,10,0,Math.PI*2); ctx.fillStyle=ng; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(nx,ny,isEnd?5:3.5,0,Math.PI*2);
+    ctx.fillStyle=isEnd?`rgba(${rgb},0.95)`:'rgba(255,255,255,0.7)'; ctx.fill();
+    ctx.strokeStyle='rgba(20,20,20,0.7)'; ctx.lineWidth=1.5; ctx.stroke();
+  }
+
+  // % labels
+  const fszPct=Math.max(10,Math.min(13,W/80));
+  ctx.font=`bold ${fszPct}px 'Space Mono'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
+  for(const{mx,my,util,rgb}of hitAreas){
+    const lbl=`${util.toFixed(0)}%`, tw=ctx.measureText(lbl).width;
+    ctx.fillStyle='rgba(10,10,20,0.78)';
+    ctx.beginPath(); ctx.roundRect(mx-tw/2-5,my-fszPct-12,tw+10,fszPct+8,4); ctx.fill();
+    ctx.fillStyle=`rgba(${rgb},1)`; ctx.fillText(lbl,mx,my-5);
+  }
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.restore();
+
+  // Animate
+  const af = requestAnimationFrame(() => {
+    const slider=document.getElementById('time-slider');
+    if (!slider) return;
+    if (mode==='globe'    && projMode!=='globe')     return;
+    if (mode==='mercator' && projMode!=='mercator')  return;
+    const bucket=res.allBuckets[+slider.value];
+    if (bucket===activeBucket) drawArcOverlay(res,activeBucket,lmap,ovlId,mode);
+  });
+  if (mode==='globe') globeAnimId=af; else leafletAnimId=af;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// MERCATOR ホバーツールチップ
+// ──────────────────────────────────────────────────────────────────────
+function initMercatorHover() {
+  // world-canvas（2D Canvas / 3D globe）と leaflet-overlay（2D Leaflet）に登録
+  ['world-canvas', 'leaflet-overlay'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el || el._hoverInit) return;
+    el._hoverInit = true;
+    el.style.pointerEvents = 'auto';
+
+    el.addEventListener('mousemove', e => {
+      const rect = el.getBoundingClientRect();
+      const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
+      if (h) {
+        showTooltip(e.clientX, e.clientY, h);
+        el.style.cursor = 'pointer';
+      } else {
+        hideTooltip();
+        el.style.cursor = 'default';
+      }
+    });
+    el.addEventListener('mouseleave', hideTooltip);
+    el.addEventListener('click', e => {
+      const rect = el.getBoundingClientRect();
+      const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
+      if (h) showModal(h);
+    });
+  });
+}
+
+
+// ── ±ボタンによるズーム ───────────────────────────────────────────────
+function mapZoom(dir) {
+  if (projMode === 'globe') {
+    globeZoom = Math.max(0.15, Math.min(0.65, globeZoom + dir * 0.05));
+    if (lastRes && lastRenderBucket !== null) {
+      cancelAnimationFrame(animFrameId);
+      drawGlobe(lastRes, lastRenderBucket);
+    }
+  } else {
+    if (typeof L !== 'undefined' && leafletMap) {
+      if (dir > 0) leafletMap.zoomIn();
+      else         leafletMap.zoomOut();
+    } else {
+      mercZoom = Math.max(0.4, Math.min(5.0, mercZoom * (dir > 0 ? 1.3 : 0.77)));
+      if (lastRes && lastRenderBucket !== null) drawMercatorCanvas(lastRes, lastRenderBucket);
+    }
+  }
+}
+
+// ── Globe rotation state ──────────────────────────────────────────────────
+let globeLon = 140; // center longitude (deg)
+let globeLat =  30; // center latitude  (deg)
+let globeZoom = 0.38; // globe radius ratio — 初期は全体が見えるサイズ
+let mercZoom = 1.0;   // mercator zoom scale
+let mercCenterLon = 139.69;
+let mercCenterLat = 25.0;
+let dragState = null; // {startX,startY,startLon,startLat}
+let lastRenderBucket = null;
+let lastRes = null;
+let animFrameId = null;
+let projMode = 'globe'; // 'globe' | 'mercator'
+let leafletMap = null;
+let leafletAnimId = null;
+let hitAreas = [];
+let playbackTimer = null;
+let isPlaying = false;
+
+// ── Touch/mouse drag ──────────────────────────────────────────────────────
+function initGlobeDrag() {
+  const mc = document.getElementById('map-container');
+  if (mc._dragInit) return;
+  mc._dragInit = true;
+
+  function startDrag(cx, cy) {
+    if (projMode !== 'globe') return;
+    dragState = { startX:cx, startY:cy, startLon:globeLon, startLat:globeLat };
+    mc.classList.add('dragging');
+  }
+  function moveDrag(cx, cy) {
+    if (!dragState || projMode !== 'globe') return;
+    const canvas = document.getElementById('world-canvas');
+    const R = Math.min(canvas.offsetWidth, canvas.offsetHeight) * 0.46;
+    const dLon = (cx - dragState.startX) / R * 90;
+    const dLat = (cy - dragState.startY) / R * 90;
+    globeLon = dragState.startLon - dLon;
+    globeLat = dragState.startLat + dLat;
+    if (lastRes && lastRenderBucket !== null) {
+      cancelAnimationFrame(animFrameId);
+      drawGlobe(lastRes, lastRenderBucket);
+    }
+  }
+  function endDrag() { dragState = null; mc.classList.remove('dragging'); }
+
+  mc.addEventListener('mousedown',  e => { if (projMode !== 'globe') return; e.preventDefault(); startDrag(e.clientX, e.clientY); });
+
+  window.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
+  window.addEventListener('mouseup',   () => endDrag());
+
+  mc.addEventListener('touchstart', e => { if (projMode !== 'globe') return; e.preventDefault(); startDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+  mc.addEventListener('touchmove',  e => { if (projMode !== 'globe') return; e.preventDefault(); moveDrag(e.touches[0].clientX, e.touches[0].clientY); },  {passive:false});
+  mc.addEventListener('touchend',   () => endDrag());
+}
+
+// ── Orthographic projection helpers ──────────────────────────────────────
+function toRad(d) { return d * Math.PI / 180; }
+
+// Rotate lon/lat by globe center, returns {x,y,z} on unit sphere
+function geoToXYZ(lon, lat) {
+  const la = toRad(lat), lo = toRad(lon);
+  return {
+    x: Math.cos(la) * Math.cos(lo),
+    y: Math.cos(la) * Math.sin(lo),
+    z: Math.sin(la)
+  };
+}
+
+// Correct orthographic projection with full lon+lat rotation
+function orthoProject(lon, lat, cLon, cLat, cx, cy, R) {
+  const la  = toRad(lat),  lo  = toRad(lon);
+  const cla = toRad(cLat), clo = toRad(cLon);
+  // Convert to 3D unit sphere
+  const x0 = Math.cos(la) * Math.cos(lo);
+  const y0 = Math.cos(la) * Math.sin(lo);
+  const z0 = Math.sin(la);
+  // Rotate around Z-axis by -cLon (bring center longitude to front)
+  const x1 =  x0 * Math.cos(clo) + y0 * Math.sin(clo);
+  const y1 = -x0 * Math.sin(clo) + y0 * Math.cos(clo);
+  const z1 =  z0;
+  // Rotate around Y-axis by cLat (tilt for center latitude)
+  const x2 =  x1 * Math.cos(cla) + z1 * Math.sin(cla);
+  const y2 =  y1;
+  const z2 = -x1 * Math.sin(cla) + z1 * Math.cos(cla);
+  // x2 > 0 means visible (facing viewer)
+  // Screen coords: y2 maps to X, -z2 maps to Y
+  return { px: cx + y2 * R, py: cy - z2 * R, visible: x2 > -0.01, Z: x2 };
+}
+
+// ── Main globe draw ───────────────────────────────────────────────────────
+function drawWorldMap(res, activeBucket) {
+  if (projMode === 'globe') drawGlobe(res, activeBucket);
+  else drawLeaflet(res, activeBucket);
+}
+
+// ══════════════════════════════════════════════════════
+// MOLLWEIDE PROJECTION MAP
+// ══════════════════════════════════════════════════════
+function drawLeaflet(res, activeBucket) {
+  lastRes = res; lastRenderBucket = activeBucket;
+  cancelAnimationFrame(animFrameId);
+  cancelAnimationFrame(leafletAnimId);
+
+  // leaflet-map を非表示にして Canvas版で描画
+  const lmd = document.getElementById('leaflet-map');
+  if (lmd) lmd.style.display = 'none';
+
+  drawMercatorCanvas(res, activeBucket);
+}
+
+
+// ── Canvas2D 2D（Leaflet非対応環境用フォールバック） ───────────────
+function drawMercatorCanvas(res, activeBucket) {
+  lastRes = res; lastRenderBucket = activeBucket;
+  const _wc = document.getElementById('world-canvas');
+  if (_wc) {
+    _wc._hoverInit = false;
+    _wc.style.display = 'block';
+    _wc.style.position = 'relative';
+    _wc.style.top = '0';
+    _wc.style.left = '0';
+  }
+
+  cancelAnimationFrame(animFrameId);
+
+  const container = document.getElementById('map-container');
+  const W = container.offsetWidth || 600;
+  const H = Math.round(W * 0.58);
+  const canvas = document.getElementById('world-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W*dpr, H*dpr);
+  ctx.save(); ctx.scale(dpr, dpr);
+
+  const MAX_LAT = 78;
+  // merc: lon は連続正規化済み経度も受け取れる（折り返しなし）
+  function merc(lon, lat) {
+    const dLon = lon - mercCenterLon; // 折り返しなし→連続弧に対応
+    const latC = Math.max(-MAX_LAT, Math.min(MAX_LAT, lat));
+    const x = W/2 + (dLon / 180) * (W / 2) * mercZoom;
+    const latR = latC * Math.PI / 180;
+    const mercY = Math.log(Math.tan(Math.PI/4 + latR/2));
+    const maxMY = Math.log(Math.tan(Math.PI/4 + MAX_LAT*Math.PI/360));
+    const y = H/2 - (mercCenterLat / MAX_LAT) * (H/2) * mercZoom
+                  - (mercY / maxMY) * (H / 2) * mercZoom;
+    return [x, y];
+  }
+  // 陸地・グリッド用: 折り返しあり（画面内に収める）
+  function mercWrap(lon, lat) {
+    let dLon = lon - mercCenterLon;
+    while (dLon > 180) dLon -= 360;
+    while (dLon < -180) dLon += 360;
+    const latC = Math.max(-MAX_LAT, Math.min(MAX_LAT, lat));
+    const x = W/2 + (dLon / 180) * (W / 2) * mercZoom;
+    const latR = latC * Math.PI / 180;
+    const mercY = Math.log(Math.tan(Math.PI/4 + latR/2));
+    const maxMY = Math.log(Math.tan(Math.PI/4 + MAX_LAT*Math.PI/360));
+    const y = H/2 - (mercCenterLat / MAX_LAT) * (H/2) * mercZoom
+                  - (mercY / maxMY) * (H / 2) * mercZoom;
+    return [x, y];
+  }
+
+  // 背景
+  ctx.fillStyle = '#06101e'; ctx.fillRect(0,0,W,H);
+  const og = ctx.createLinearGradient(0,0,0,H);
+  og.addColorStop(0,'#1c6ea0'); og.addColorStop(0.5,'#176090');
+  og.addColorStop(0.8,'#104e78'); og.addColorStop(1,'#0a3255');
+  ctx.fillStyle = og; ctx.fillRect(0,0,W,H);
+
+  // グリッド
+  ctx.strokeStyle='rgba(255,255,255,0.07)'; ctx.lineWidth=0.4;
+  for (let lat=-60;lat<=60;lat+=30) {
+    const [,y]=mercWrap(mercCenterLon,lat);
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  for (let lon=-150;lon<=180;lon+=30) {
+    const [x]=mercWrap(lon+mercCenterLon,0);
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+
+  // 陸地
+  drawLandColored(ctx, (lon,lat)=>mercWrap(lon,lat), false, mercCenterLon);
+
+  // 枠
+  ctx.strokeStyle='rgba(80,150,255,0.30)'; ctx.lineWidth=1.5;
+  ctx.strokeRect(0,0,W,H);
+
+  // 弧
+  const {eeStats,thWarn,thAlert} = res;
+  hitAreas = [];
+  const mercNodes = [];
+  const edgeLabels = [];
+
+  for (const [ee,stat] of Object.entries(eeStats)) {
+    const bObj=stat.buckets.reduce((p,c)=>Math.abs(c.bucket-activeBucket)<Math.abs(p.bucket-activeBucket)?c:p);
+    const util=bObj.util, wpts=Object.entries(bObj.waypoints);
+    if (wpts.length<2) continue;
+    let rgb=util>=thAlert?'255,107,53':util>=thWarn?'255,200,50':'0,212,255';
+    const maxBps=Math.max(...Object.values(eeStats).map(s=>s.avgBps));
+    const thick=1.8+(bObj.avgBps/maxBps)*5;
+    const [,first]=wpts[0],[,last]=wpts[wpts.length-1];
+    const eeParts=ee.split(/[〜～\-–—]/);
+    const cityFrom=eeParts[0]?.trim()||ee, cityTo=eeParts[1]?.trim()||ee;
+    const arcPts=greatCirclePoints(first.lon,first.lat,last.lon,last.lat,120);
+
+    // ── 経度を「連続的」に正規化（折れ線にならないよう） ──────────────
+    // 東京中心(mercCenterLon)からの相対経度で管理し、
+    // 連続する点間の経度変化を±180以内に収める
+    const normPts=[]; // [normLon, lat]
+    {
+      // まず始点を東京中心基準に正規化
+      let prevNorm = arcPts[0][0] - mercCenterLon;
+      while(prevNorm >  180) prevNorm -= 360;
+      while(prevNorm < -180) prevNorm += 360;
+      normPts.push([prevNorm + mercCenterLon, arcPts[0][1]]);
+
+      for(let i=1; i<arcPts.length; i++){
+        let curr = arcPts[i][0] - mercCenterLon;
+        while(curr >  180) curr -= 360;
+        while(curr < -180) curr += 360;
+        // 前点との差が±180を超えないよう折り返し補正
+        let diff = curr - prevNorm;
+        if(diff >  180) diff -= 360;
+        if(diff < -180) diff += 360;
+        prevNorm = prevNorm + diff;
+        normPts.push([prevNorm + mercCenterLon, arcPts[i][1]]);
+      }
+    }
+
+    // ── 画面外（±180°以上離れた点）でセグメント分割 ──────────────────
+    const segs=[]; let seg=[];
+    for(const [lo,la] of normPts){
+      const dLon = lo - mercCenterLon;
+      if(Math.abs(dLon) <= 180+0.5){  // 少し余裕を持たせる
+        seg.push([lo, la]);
+      } else {
+        if(seg.length>1) segs.push(seg);
+        seg=[];
+      }
+    }
+    if(seg.length>1) segs.push(seg);
+    if(segs.length===0) continue;
+
+    const crossed = segs.length>1;
+    const allScreenPts=[];
+
+    segs.forEach((segPts,si)=>{
+      const sp = segPts.map(([lo,la])=>merc(lo,la));
+      allScreenPts.push(...sp);
+
+      // 外周グロー
+      ctx.beginPath(); sp.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+      ctx.strokeStyle=`rgba(${rgb},0.07)`; ctx.lineWidth=thick*6;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+
+      ctx.beginPath(); sp.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+      ctx.strokeStyle=`rgba(${rgb},0.18)`; ctx.lineWidth=thick*2.5;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+
+      // 本線
+      ctx.beginPath(); sp.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
+      ctx.strokeStyle=`rgba(${rgb},0.92)`; ctx.lineWidth=thick;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+
+      // 流れるドット
+      const t=(Date.now()/2000)%1;
+      for(let k=0;k<3;k++){
+        const ti=(t+k/3)%1, idx=Math.floor(ti*(sp.length-1));
+        const[dx,dy]=sp[Math.max(0,idx)];
+        if(!isFinite(dx)||!isFinite(dy)) continue;
+        const dg=ctx.createRadialGradient(dx,dy,0,dx,dy,5);
+        dg.addColorStop(0,`rgba(${rgb},0.9)`); dg.addColorStop(1,`rgba(${rgb},0)`);
+        ctx.beginPath(); ctx.arc(dx,dy,5,0,Math.PI*2); ctx.fillStyle=dg; ctx.fill();
+        ctx.beginPath(); ctx.arc(dx,dy,2,0,Math.PI*2);
+        ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fill();
+      }
+
+      if(crossed){
+        if(si===0){
+          const[,ey]=sp[sp.length-1];
+          edgeLabels.push({x:W-6,y:ey,text:`→${cityTo}`,rgb,align:'right'});
+        } else if(si===segs.length-1){
+          const[,ey]=sp[0];
+          edgeLabels.push({x:6,y:ey,text:`${cityFrom}→`,rgb,align:'left'});
+        }
+      }
+    });
+
+    const midAll=allScreenPts[Math.floor(allScreenPts.length/2)]||allScreenPts[0];
+    if(!midAll) continue;
+    hitAreas.push({ee,util,bObj,mx:midAll[0],my:midAll[1],rgb,sp:allScreenPts,thick});
+
+    // ノード: wptsの各経度をnormPts始点基準で連続正規化してmerc()で描画
+    {
+      const baseNorm = normPts[0][0]; // 始点の正規化経度
+      const baseRaw  = arcPts[0][0];  // 始点の生経度
+      wpts.forEach(([,wp],i)=>{
+        const isEnd=i===0||i===wpts.length-1;
+        const label=isEnd?(i===0?cityFrom:cityTo):null;
+        // wp.lon を baseNorm 基準で連続正規化
+        let diff = wp.lon - baseRaw;
+        while(diff >  180) diff -= 360;
+        while(diff < -180) diff += 360;
+        const normLon = baseNorm + diff;
+        const[nx,ny]=merc(normLon, wp.lat);
+        mercNodes.push({nx,ny,isEnd,rgb,label});
+      });
+    }
+  }
+
+  // ── ノード描画 ──
+  for(const{nx,ny,isEnd,rgb}of mercNodes){
+    if(isEnd){
+      const ng=ctx.createRadialGradient(nx,ny,1,nx,ny,8);
+      ng.addColorStop(0,`rgba(${rgb},0.4)`);ng.addColorStop(1,`rgba(${rgb},0)`);
+      ctx.beginPath();ctx.arc(nx,ny,8,0,Math.PI*2);ctx.fillStyle=ng;ctx.fill();
+    }
+    ctx.beginPath();ctx.arc(nx,ny,isEnd?5:3.5,0,Math.PI*2);
+    ctx.fillStyle=isEnd?`rgba(${rgb},0.95)`:'rgba(200,212,238,0.6)';ctx.fill();
+    ctx.strokeStyle='#050810';ctx.lineWidth=1;ctx.stroke();
+  }
+  // ── 収容率ラベル ──
+  const fszPct=Math.max(9,Math.min(12,W/90));
+  ctx.font=`bold ${fszPct}px 'Space Mono'`;ctx.textAlign='center';ctx.textBaseline='bottom';
+  for(const{mx,my,util,rgb}of hitAreas){
+    const lbl=`${util.toFixed(0)}%`,tw=ctx.measureText(lbl).width;
+    ctx.fillStyle='rgba(5,10,22,0.75)';
+    ctx.beginPath();ctx.roundRect(mx-tw/2-4,my-fszPct-10,tw+8,fszPct+6,3);ctx.fill();
+    ctx.fillStyle=`rgba(${rgb},1)`;ctx.fillText(lbl,mx,my-4);
+  }
+  // ── 都市名ラベル（ノード付近）──
+  const fszCity=Math.max(9,Math.min(11,W/95));
+  ctx.font=`bold ${fszCity}px 'Inter'`;ctx.textAlign='center';ctx.textBaseline='top';
+  for(const{nx,ny,label,rgb}of mercNodes.filter(n=>n.isEnd&&n.label)){
+    const tw=ctx.measureText(label).width,pad=3;
+    ctx.fillStyle='rgba(5,10,22,0.82)';
+    ctx.beginPath();ctx.roundRect(nx-tw/2-pad,ny+7,tw+pad*2,fszCity+5,3);ctx.fill();
+    ctx.fillStyle=`rgba(${rgb},1)`;ctx.fillText(label,nx,ny+9);
+  }
+  const fsz=Math.max(9,Math.min(11,W/100));
+  ctx.font=`bold ${fsz}px 'Inter'`;ctx.textBaseline='middle';
+  for(const lbl of edgeLabels){
+    ctx.textAlign=lbl.align;const x=lbl.align==='right'?W-10:10;
+    const tw=ctx.measureText(lbl.text).width,pad=4;const bx=lbl.align==='right'?x-tw-pad:x-pad;
+    ctx.fillStyle='rgba(9,14,26,0.88)';ctx.beginPath();ctx.roundRect(bx,lbl.y-fsz/2-pad,tw+pad*2,fsz+pad*2,3);ctx.fill();
+    ctx.fillStyle=`rgba(${lbl.rgb},1)`;ctx.fillText(lbl.text,x,lbl.y);
+  }
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.restore();
+
+  // ホイールズーム + ドラッグパン（Canvas版）
+  if (!canvas._mercInit) {
+    canvas._mercInit = true;
+    let _drag=false,_px=0,_py=0;
+    canvas.addEventListener('wheel', e=>{
+      if(projMode!=='mercator') return;
+      e.preventDefault();
+      mercZoom=Math.max(0.4,Math.min(5.0,mercZoom*(1-e.deltaY*0.001)));
+      if(lastRes&&lastRenderBucket!==null) drawMercatorCanvas(lastRes,lastRenderBucket);
+    },{passive:false});
+    canvas.addEventListener('mousedown',e=>{_drag=true;_px=e.clientX;_py=e.clientY;canvas.style.cursor='grabbing';});
+    window.addEventListener('mousemove',e=>{
+      if(!_drag||projMode!=='mercator') return;
+      const deg=360/(W*mercZoom);
+      mercCenterLon-=(e.clientX-_px)*deg;
+      mercCenterLat=Math.max(-75,Math.min(75,mercCenterLat+(e.clientY-_py)*deg*0.5));
+      _px=e.clientX;_py=e.clientY;
+      if(lastRes&&lastRenderBucket!==null) drawMercatorCanvas(lastRes,lastRenderBucket);
+    });
+    window.addEventListener('mouseup',()=>{_drag=false;canvas.style.cursor='grab';});
+    canvas.style.cursor='grab';
+  }
+
+  animFrameId = requestAnimationFrame(()=>{
+    const slider=document.getElementById('time-slider');
+    if(!slider||projMode!=='mercator') return;
+    const bucket=res.allBuckets[+slider.value];
+    if(bucket===activeBucket) drawMercatorCanvas(res,activeBucket);
+  });
+}
+
+function drawLeafletOverlay(res, activeBucket) {
+  drawArcOverlay(res, activeBucket, leafletMap, 'leaflet-overlay', 'mercator');
+  setTimeout(initMercatorHover, 50);
+}
+
+function drawGlobe(res, activeBucket) {
+  lastRes = res; lastRenderBucket = activeBucket;
+  const _wc = document.getElementById('world-canvas');
+  if (_wc) {
+    _wc._hoverInit = false;
+    _wc.style.display = 'block';
+    _wc.style.position = 'relative';
+  }
+  initGlobeDrag();
+  const mc2 = document.getElementById('map-container'); if(mc2){mc2.classList.add('globe-mode');}
+
+  const canvas = document.getElementById('world-canvas');
+  if (!canvas) return;
+  const container = document.getElementById('map-container');
+  const dpr = window.devicePixelRatio || 1;
+  const W = container.offsetWidth;
+  const H = Math.round(W * 0.75);
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W*dpr, H*dpr);
+  ctx.save(); ctx.scale(dpr, dpr);
+
+  const cx = W/2, cy = H/2;
+  const R  = Math.min(W, H) * globeZoom;
+
+  // ── Space / star background ──
+  ctx.fillStyle='#000510'; ctx.fillRect(0,0,W,H);
+  for (let i=0;i<220;i++){
+    let x=i*2654435761>>>0; x=(x^x>>>16)*0x45d9f3b>>>0; x=(x^x>>>16)>>>0;
+    let y=i*1013904223>>>0; y=(y^y>>>16)*0x45d9f3b>>>0; y=(y^y>>>16)>>>0;
+    const sx=(x/0xffffffff)*W, sy=(y/0xffffffff)*H;
+    const ss=0.3+(i%5)*0.18, op=0.25+(i%7)*0.10;
+    ctx.beginPath(); ctx.arc(sx,sy,ss,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${op})`; ctx.fill();
+  }
+
+  // ── Outer atmosphere halo ──
+  const halo=ctx.createRadialGradient(cx,cy,R*0.97,cx,cy,R*1.20);
+  halo.addColorStop(0,'rgba(80,160,255,0.28)');
+  halo.addColorStop(0.35,'rgba(50,120,220,0.10)');
+  halo.addColorStop(0.7,'rgba(20,80,180,0.03)');
+  halo.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(cx,cy,R*1.20,0,Math.PI*2);
+  ctx.fillStyle=halo; ctx.fill();
+
+  // ── Ocean disc ──
+  const og=ctx.createRadialGradient(cx,cy,R*0.1,cx,cy,R);
+  og.addColorStop(0,  '#1a3a60');
+  og.addColorStop(0.4,'#112c4e');
+  og.addColorStop(0.75,'#0c1e38');
+  og.addColorStop(1,  '#060e1e');
+  ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2);
+  ctx.fillStyle=og; ctx.fill();
+
+  // ── Graticule ──
+  ctx.strokeStyle='rgba(30,55,90,0.55)'; ctx.lineWidth=0.5;
+  for (let lat=-60; lat<=60; lat+=30) {
+    ctx.beginPath(); let first=true;
+    for (let lon=-180; lon<=180; lon+=3) {
+      const p = orthoProject(lon,lat,globeLon,globeLat,cx,cy,R);
+      if (!p.visible) { first=true; continue; }
+      first ? ctx.moveTo(p.px,p.py) : ctx.lineTo(p.px,p.py);
+      first=false;
+    }
+    ctx.stroke();
+  }
+  for (let lon=-180; lon<=180; lon+=30) {
+    ctx.beginPath(); let first=true;
+    for (let lat=-89; lat<=89; lat+=3) {
+      const p = orthoProject(lon,lat,globeLon,globeLat,cx,cy,R);
+      if (!p.visible) { first=true; continue; }
+      first ? ctx.moveTo(p.px,p.py) : ctx.lineTo(p.px,p.py);
+      first=false;
+    }
+    ctx.stroke();
+  }
+
+  // ── Land (colored terrain) ──
+  drawLandColored(ctx,
+    (lon,lat) => orthoProject(lon,lat,globeLon,globeLat,cx,cy,R),
+    true
+  );
+
+  // ── Atmosphere rim ──
+  const limb=ctx.createRadialGradient(cx,cy,R*0.88,cx,cy,R);
+  limb.addColorStop(0,'rgba(0,0,0,0)');
+  limb.addColorStop(0.75,'rgba(30,100,220,0.12)');
+  limb.addColorStop(1,'rgba(60,150,240,0.45)');
+  ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.clip();
+  ctx.fillStyle=limb; ctx.fillRect(0,0,W,H); ctx.restore();
+
+  // ── Globe border ──
+  ctx.strokeStyle='rgba(80,150,255,0.35)'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2); ctx.stroke();
+
+  // ── Arcs ──────────────────────────────────────────────────────────────
+  const { eeStats, thWarn, thAlert } = res;
+  hitAreas = [];
+  const cityLabels = []; // drawn last, always on top
+  const nodeList   = []; // drawn after arcs
+
+  for (const [ee, stat] of Object.entries(eeStats)) {
+    const bObj = stat.buckets.reduce((prev,cur) =>
+      Math.abs(cur.bucket-activeBucket) < Math.abs(prev.bucket-activeBucket) ? cur : prev);
+    const util = bObj.util;
+    const wpts = Object.entries(bObj.waypoints);
+    if (wpts.length < 2) continue;
+
+    let rgb;
+    if (util >= thAlert)     rgb='255,107,53';
+    else if (util >= thWarn) rgb='255,200,50';
+    else                     rgb='0,212,255';
+
+    const maxBps = Math.max(...Object.values(eeStats).map(s=>s.avgBps));
+    const thick  = 1.5 + (bObj.avgBps/maxBps)*4.5;
+
+    const [,first] = wpts[0];
+    const [,last]  = wpts[wpts.length-1];
+    const arcPts   = greatCirclePoints(first.lon,first.lat,last.lon,last.lat,80);
+
+    // Project all points
+    const proj = arcPts.map(([lo,la]) => orthoProject(lo,la,globeLon,globeLat,cx,cy,R));
+
+    // Split into visible sub-segments
+    const subSegs = [];
+    let cur = [];
+    for (const p of proj) {
+      if (p.visible) { cur.push(p); }
+      else { if (cur.length>1) subSegs.push(cur); cur=[]; }
+    }
+    if (cur.length>1) subSegs.push(cur);
+
+    for (const sp of subSegs) {
+      // Glow
+      ctx.beginPath();
+      sp.forEach((p,i) => i===0?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py));
+      ctx.strokeStyle=`rgba(${rgb},0.1)`; ctx.lineWidth=thick*4;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+      // Line
+      ctx.beginPath();
+      sp.forEach((p,i) => i===0?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py));
+      ctx.strokeStyle=`rgba(${rgb},0.9)`; ctx.lineWidth=thick;
+      ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+    }
+
+    // Animated flow dots (only on visible segments)
+    const allVis = proj.filter(p=>p.visible);
+    if (allVis.length > 1) {
+      const t = (Date.now()/2000) % 1;
+      for (let k=0;k<3;k++) {
+        const ti = (t+k/3)%1;
+        const idx = Math.floor(ti*(allVis.length-1));
+        const p = allVis[idx];
+        ctx.beginPath(); ctx.arc(p.px,p.py,3,0,Math.PI*2);
+        ctx.fillStyle=`rgba(${rgb},0.95)`; ctx.fill();
+      }
+    }
+
+    // Midpoint — collect for later draw
+    const midVis = allVis[Math.floor(allVis.length/2)];
+    const visPts=proj.filter(p=>p.visible).map(p=>[p.px,p.py]);
+    if (midVis) hitAreas.push({ee,util,bObj,mx:midVis.px,my:midVis.py,rgb,midVis,sp:visPts,thick:thick});
+
+    // Collect city labels for later (drawn after all arcs)
+    const eeParts = ee.split(/[〜～\-–—]/);
+    const cityFrom = eeParts[0]?.trim()||ee;
+    const cityTo   = eeParts[1]?.trim()||ee;
+    const pF = orthoProject(first.lon,first.lat,globeLon,globeLat,cx,cy,R);
+    const pL = orthoProject(last.lon, last.lat, globeLon,globeLat,cx,cy,R);
+    if (pF.visible) cityLabels.push({p:pF, label:cityFrom, rgb});
+    if (pL.visible) cityLabels.push({p:pL, label:cityTo,   rgb});
+
+    // Waypoint nodes (collect for later)
+    wpts.forEach(([,wp],i) => {
+      const p = orthoProject(wp.lon,wp.lat,globeLon,globeLat,cx,cy,R);
+      if (!p.visible) return;
+      const isEnd = i===0||i===wpts.length-1;
+      nodeList.push({p, isEnd, rgb});
+    });
+  }
+
+  // ── Draw nodes on top of arcs ──────────────────────────────────────────
+  for (const {p,isEnd,rgb} of nodeList) {
+    ctx.beginPath(); ctx.arc(p.px,p.py,isEnd?5:3,0,Math.PI*2);
+    ctx.fillStyle=isEnd?`rgba(${rgb},0.95)`:'rgba(180,200,230,0.7)'; ctx.fill();
+    ctx.strokeStyle='rgba(5,8,16,0.8)'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  // ── Draw midpoint % labels ─────────────────────────────────────────────
+  const fszM = Math.max(9,Math.min(12,W/80));
+  ctx.font=`bold ${fszM}px 'Space Mono'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
+  for (const h of hitAreas) {
+    if (!h.midVis) continue;
+    ctx.fillStyle=`rgba(${h.rgb},1)`;
+    ctx.fillText(`${h.util.toFixed(0)}%`, h.midVis.px, h.midVis.py-5);
+  }
+
+  // ── Draw city labels last (always on top) ─────────────────────────────
+  const fszC = Math.max(9,Math.min(11,W/95));
+  ctx.font=`bold ${fszC}px 'Inter'`; ctx.textAlign='center'; ctx.textBaseline='top';
+  for (const {p,label,rgb} of cityLabels) {
+    const tw = ctx.measureText(label).width;
+    const pad=4, lx=p.px, ly=p.py+7;
+    ctx.fillStyle='rgba(5,8,16,0.88)';
+    ctx.beginPath(); ctx.roundRect(lx-tw/2-pad,ly-2,tw+pad*2,fszC+6,3); ctx.fill();
+    ctx.fillStyle=`rgba(${rgb},1)`; ctx.fillText(label,lx,ly);
+  }
+
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.restore();
+
+  // Animate
+  setTimeout(initMercatorHover, 50);
+  animFrameId = requestAnimationFrame(() => {
+    const slider = document.getElementById('time-slider');
+    if (!slider) return;
+    const bucket = res.allBuckets[+slider.value];
+    if (bucket === activeBucket) drawGlobe(res, activeBucket);
+  });
+}
+
+function greatCirclePoints(lon1,lat1,lon2,lat2,n) {
+  // Returns n+1 [lon,lat] points along great circle, lon in -180..180
+  const toR = d => d*Math.PI/180;
+  const toD = r => r*180/Math.PI;
+  const la1=toR(lat1), lo1=toR(lon1), la2=toR(lat2), lo2=toR(lon2);
+  // Central angle
+  const cosD = Math.sin(la1)*Math.sin(la2)+Math.cos(la1)*Math.cos(la2)*Math.cos(lo2-lo1);
+  const D = Math.acos(Math.max(-1, Math.min(1, cosD)));
+  const sinD = Math.sin(D);
+  const pts = [];
+  for (let i=0; i<=n; i++) {
+    const f = i/n;
+    const A = sinD < 1e-10 ? (1-f) : Math.sin((1-f)*D) / sinD;
+    const B = sinD < 1e-10 ? f     : Math.sin(f*D)     / sinD;
+    const x = A*Math.cos(la1)*Math.cos(lo1) + B*Math.cos(la2)*Math.cos(lo2);
+    const y = A*Math.cos(la1)*Math.sin(lo1) + B*Math.cos(la2)*Math.sin(lo2);
+    const z = A*Math.sin(la1) + B*Math.sin(la2);
+    let lon = toD(Math.atan2(y,x));
+    const lat = toD(Math.atan2(z,Math.sqrt(x*x+y*y)));
+    // Normalize lon to -180..180
+    while (lon >  180) lon -= 360;
+    while (lon < -180) lon += 360;
+    pts.push([lon, lat]);
+  }
+  return pts;
+}
+
+// 線上距離判定ユーティリティ
+function hitTestArcs(mx, my) {
+  for (const h of hitAreas) {
+    if (h.sp && h.sp.length > 1) {
+      for (let i = 1; i < h.sp.length; i++) {
+        const p0 = h.sp[i-1], p1 = h.sp[i];
+        if (!p0 || !p1) continue;
+        const x1 = Array.isArray(p0) ? p0[0] : p0.px;
+        const y1 = Array.isArray(p0) ? p0[1] : p0.py;
+        const x2 = Array.isArray(p1) ? p1[0] : p1.px;
+        const y2 = Array.isArray(p1) ? p1[1] : p1.py;
+        const dx = x2-x1, dy = y2-y1, len = Math.sqrt(dx*dx+dy*dy);
+        if (len < 1) continue;
+        const t = Math.max(0, Math.min(1, ((mx-x1)*dx+(my-y1)*dy)/(len*len)));
+        const dist = Math.sqrt((mx-x1-t*dx)**2+(my-y1-t*dy)**2);
+        if (dist < Math.max((h.thick||2)*2.5, 12)) return h;
+      }
+    } else {
+      if (Math.hypot(mx-h.mx, my-h.my) < 24) return h;
+    }
+  }
+  return null;
+}
+
+// Canvas click → modal
+document.addEventListener('click', e => {
+  const canvas = document.getElementById('world-canvas');
+  if (!canvas || e.target !== canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
+  if (h) showModal(h);
+});
+
+// Hover tooltip
+document.addEventListener('mousemove', e => {
+  const canvas = document.getElementById('world-canvas');
+  if (!canvas || e.target !== canvas) { hideTooltip(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
+  if (h) { showTooltip(e.clientX, e.clientY, h); canvas.style.cursor='pointer'; }
+  else   { hideTooltip(); canvas.style.cursor='default'; }
+});
+
+function showTooltip(cx, cy, h) {
+  const tt = document.getElementById('tooltip');
+  document.getElementById('tt-title').textContent = h.ee;
+  document.getElementById('tt-body').innerHTML =
+    `収容率: <b style="color:rgba(${h.rgb},1)">${h.util.toFixed(1)}%</b><br>` +
+    `平均帯域: ${fmtBps(h.bObj.avgBps)}<br>` +
+    `経由リンク数: ${Object.keys(h.bObj.waypoints).length}<br>` +
+    `<span style="color:var(--text-dim);font-size:10px">クリックで詳細を表示</span>`;
+  tt.style.display = 'block';
+  tt.style.left = (cx+14)+'px'; tt.style.top = (cy-10)+'px';
+}
+function hideTooltip() { document.getElementById('tooltip').style.display='none'; }
+
+
+// ── KPI Detail Modals ─────────────────────────────────────────────────────
+function fmtBucketLabel(epochSec) {
+  const d = new Date(epochSec * 1000);
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
+function utilColor(u, thWarn, thAlert) {
+  if (u >= thAlert) return 'var(--alert)';
+  if (u >= thWarn)  return 'var(--warn)';
+  return 'var(--green)';
+}
+
+function showKpiDetail(type) {
+  if (!analysisResult) return;
+  const { eeStats, allBuckets, thWarn, thAlert } = analysisResult;
+  const ees = Object.entries(eeStats);
+
+  let title = '', body = '';
+
+  if (type === 'routes') {
+    // ── 全通信区間一覧 ──────────────────────────────────────────────
+    title = `通信区間一覧（全 ${ees.length} 区間）`;
+    const sorted = ees.sort((a,b) => b[1].maxU - a[1].maxU);
+    body = `<table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:11px;">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">区間名</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">最大収容率</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">平均収容率</th>
+        <th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">平均帯域</th>
+      </tr></thead><tbody>
+      ${sorted.map(([ee,s]) => `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);white-space:nowrap">${ee}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:${utilColor(s.maxU,thWarn,thAlert)}">${s.maxU.toFixed(1)}%</td>
+        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:var(--text-dim)">${s.avgU.toFixed(1)}%</td>
+        <td style="padding:6px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:var(--text-dim)">${fmtBps(s.avgBps)}</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+  }
+
+  else if (type === 'peak') {
+    // ── 最大収容率の詳細 ────────────────────────────────────────────
+    // Find which EE and which bucket had the peak
+    let peakEE = '', peakBucket = 0, peakUtil = 0;
+    for (const [ee, s] of ees) {
+      for (const b of s.buckets) {
+        if (b.util > peakUtil) { peakUtil = b.util; peakEE = ee; peakBucket = b.bucket; }
+      }
+    }
+    title = '最大収容率 詳細';
+    // Top 5 peak moments across all EEs
+    const peaks = [];
+    for (const [ee, s] of ees) {
+      for (const b of s.buckets) peaks.push({ ee, bucket: b.bucket, util: b.util, avgBps: b.avgBps });
+    }
+    peaks.sort((a,b) => b.util - a.util);
+    const top = peaks.slice(0, 10);
+    body = `
+      <div style="margin-bottom:14px;padding:12px;background:var(--bg-panel);border-radius:6px;border:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px">ピーク発生</div>
+        <div style="font-family:'Space Mono',monospace;color:var(--alert);font-size:20px;font-weight:700">${peakUtil.toFixed(1)}%</div>
+        <div style="font-size:12px;color:var(--text);margin-top:4px">${peakEE}</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${fmtBucketLabel(peakBucket)}</div>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:8px;letter-spacing:.06em;text-transform:uppercase">収容率 上位10件</div>
+      <table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:11px;">
+        <thead><tr>
+          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">区間</th>
+          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">時刻</th>
+          <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px">収容率</th>
+        </tr></thead><tbody>
+        ${top.map(p => `<tr>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);white-space:nowrap">${p.ee}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);color:var(--text-dim)">${fmtBucketLabel(p.bucket)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:${utilColor(p.util,thWarn,thAlert)}">${p.util.toFixed(1)}%</td>
+        </tr>`).join('')}
+        </tbody></table>`;
+  }
+
+  else if (type === 'danger') {
+    // ── 危険経路一覧 ────────────────────────────────────────────────
+    const dangerEEs = ees.filter(([,s]) => s.maxU >= thAlert);
+    title = `危険経路 詳細（閾値 ${thAlert}%超）`;
+    if (dangerEEs.length === 0) {
+      body = `<div style="text-align:center;padding:32px;color:var(--green);font-family:'Space Mono',monospace">✓ 危険な経路はありません</div>`;
+    } else {
+      body = dangerEEs.sort((a,b) => b[1].maxU - a[1].maxU).map(([ee, s]) => {
+        const dangerBuckets = s.buckets.filter(b => b.util >= thAlert);
+        return `
+          <div style="margin-bottom:14px;padding:12px;background:var(--bg-panel);border-radius:6px;border:1px solid rgba(255,107,53,.3)">
+            <div style="font-family:'Space Mono',monospace;font-size:12px;color:var(--alert);margin-bottom:8px">${ee}</div>
+            <div style="display:flex;gap:16px;font-size:11px;color:var(--text-dim);margin-bottom:8px">
+              <span>最大: <b style="color:var(--alert)">${s.maxU.toFixed(1)}%</b></span>
+              <span>発生: <b style="color:var(--text)">${dangerBuckets.length}回</b></span>
+              <span>平均帯域: <b style="color:var(--text)">${fmtBps(s.avgBps)}</b></span>
+            </div>
+            <div style="font-size:10px;color:var(--text-dim);margin-bottom:5px">超過時刻</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px">
+              ${dangerBuckets.slice(0,12).map(b => `<span style="font-family:'Space Mono',monospace;font-size:9px;background:rgba(255,107,53,.12);color:var(--alert);border:1px solid rgba(255,107,53,.25);border-radius:3px;padding:2px 6px">${fmtBucketLabel(b.bucket)}</span>`).join('')}
+              ${dangerBuckets.length > 12 ? `<span style="font-size:9px;color:var(--text-dim)">… 他${dangerBuckets.length-12}件</span>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }
+
+  else if (type === 'slots') {
+    // ── 時間帯別 全体平均収容率 ─────────────────────────────────────
+    title = `集計時間帯（全 ${allBuckets.length} スロット）`;
+    // Compute average utilization across all EEs per bucket
+    const avgByBucket = allBuckets.map(bucket => {
+      const utils = ees.map(([,s]) => {
+        const b = s.buckets.find(b => b.bucket === bucket);
+        return b ? b.util : null;
+      }).filter(v => v !== null);
+      return { bucket, avg: utils.reduce((s,v)=>s+v,0)/utils.length, max: Math.max(...utils) };
+    });
+    const maxAvg = Math.max(...avgByBucket.map(b => b.max));
+    body = `
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:10px">各時間帯の全通信区間 平均収容率 / 最大収容率</div>
+      <div style="max-height:360px;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:11px;">
+        <thead><tr>
+          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px;position:sticky;top:0;background:var(--bg-panel)">#</th>
+          <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px;position:sticky;top:0;background:var(--bg-panel)">時刻</th>
+          <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px;position:sticky;top:0;background:var(--bg-panel)">平均収容率</th>
+          <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border);color:var(--text-dim);font-size:10px;position:sticky;top:0;background:var(--bg-panel)">最大収容率</th>
+        </tr></thead><tbody>
+        ${avgByBucket.map((b,i) => `<tr>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);color:var(--text-dim)">${i+1}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4)">${fmtBucketLabel(b.bucket)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:${utilColor(b.avg,thWarn,thAlert)}">${b.avg.toFixed(1)}%</td>
+          <td style="padding:5px 8px;border-bottom:1px solid rgba(30,45,74,.4);text-align:right;color:${utilColor(b.max,thWarn,thAlert)}">${b.max.toFixed(1)}%</td>
+        </tr>`).join('')}
+        </tbody></table></div>`;
+  }
+
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = body;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function showModal(h) {
+  hideTooltip();
+  document.getElementById('modal-title').textContent = `${h.ee} — 経由リンク詳細`;
+  const wpts = Object.entries(h.bObj.waypoints);
+  document.getElementById('modal-body').innerHTML = `
+    <div style="margin-bottom:12px;font-size:12px;color:var(--text-dim)">
+      収容率: <span style="color:rgba(${h.rgb},1);font-weight:700">${h.util.toFixed(1)}%</span>　
+      平均帯域: <span style="color:var(--text)">${fmtBps(h.bObj.avgBps)}</span>
+    </div>
+    <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:8px">
+      ${wpts.length} リンク経由
+    </div>
+    ${wpts.map(([lid,wp],i)=>`
+      <div class="link-row">
+        <span style="color:var(--text-dim);font-size:10px;min-width:20px">${i+1}.</span>
+        <span class="link-id">${lid}</span>
+        <span class="link-coords">${wp.lat.toFixed(4)}, ${wp.lon.toFixed(4)}</span>
+      </div>`).join('')}`;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal(e) {
+  if (!e || e.target===document.getElementById('modal-overlay'))
+    document.getElementById('modal-overlay').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════════════
+// TIMELINE CANVAS
+// ══════════════════════════════════════════════════════
+function drawTimeline(data, thWarn, thAlert) {
+  const canvas = document.getElementById('timeline-canvas');
+  if (!canvas || !data) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = canvas.offsetWidth * dpr;
+  canvas.height = 180 * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W=canvas.offsetWidth, H=180;
+  const PAD={t:14,r:16,b:34,l:50};
+  const cw=W-PAD.l-PAD.r, ch=H-PAD.t-PAD.b;
+
+  ctx.fillStyle='#0a0e1a'; ctx.fillRect(0,0,W,H);
+
+  const vals = data.map(d=>d.util);
+  const maxV = Math.max(100, Math.max(...vals));
+  const n = data.length;
+  if (n < 2) return;
+
+  ctx.strokeStyle='#1e2d4a'; ctx.lineWidth=0.5;
+  for (let v=0; v<=maxV; v+=20) {
+    const y=PAD.t+ch-(v/maxV)*ch;
+    ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cw,y); ctx.stroke();
+    ctx.fillStyle='#4a5570'; ctx.font=`10px 'Space Mono'`;
+    ctx.fillText(v+'%',PAD.l-38,y+4);
+  }
+
+  function thLine(pct,color,label){
+    const y=PAD.t+ch-(pct/maxV)*ch;
+    ctx.save(); ctx.setLineDash([4,4]);
+    ctx.strokeStyle=color; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cw,y); ctx.stroke();
+    ctx.fillStyle=color; ctx.font=`10px 'Inter'`;
+    ctx.fillText(label,PAD.l+cw-52,y-3);
+    ctx.restore();
+  }
+  thLine(thWarn,'#ffc832','警告 '+thWarn+'%');
+  thLine(thAlert,'#ff6b35','危険 '+thAlert+'%');
+
+  const grad=ctx.createLinearGradient(0,PAD.t,0,PAD.t+ch);
+  grad.addColorStop(0,'rgba(0,212,255,0.28)'); grad.addColorStop(1,'rgba(0,212,255,0.01)');
+  ctx.beginPath();
+  data.forEach((d,i)=>{
+    const x=PAD.l+(i/(n-1))*cw, y=PAD.t+ch-(d.util/maxV)*ch;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.lineTo(PAD.l+cw,PAD.t+ch); ctx.lineTo(PAD.l,PAD.t+ch); ctx.closePath();
+  ctx.fillStyle=grad; ctx.fill();
+
+  ctx.beginPath();
+  data.forEach((d,i)=>{
+    const x=PAD.l+(i/(n-1))*cw, y=PAD.t+ch-(d.util/maxV)*ch;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#00d4ff'; ctx.lineWidth=2; ctx.setLineDash([]); ctx.stroke();
+
+  data.forEach((d,i)=>{
+    if(d.util<thWarn) return;
+    const x=PAD.l+(i/(n-1))*cw, y=PAD.t+ch-(d.util/maxV)*ch;
+    const col=d.util>=thAlert?'#ff6b35':'#ffc832';
+    ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2);
+    ctx.fillStyle=col; ctx.fill();
+    ctx.strokeStyle='#0a0e1a'; ctx.lineWidth=1.2; ctx.stroke();
+  });
+
+  const step=Math.max(1,Math.floor(n/8));
+  ctx.fillStyle='#4a5570'; ctx.font=`9px 'Space Mono'`; ctx.textAlign='center';
+  data.forEach((d,i)=>{
+    if(i%step!==0&&i!==n-1) return;
+    const x=PAD.l+(i/(n-1))*cw;
+    const dd=new Date(d.bucket*1000);
+    const lbl=`${String(dd.getUTCHours()).padStart(2,'0')}:${String(dd.getUTCMinutes()).padStart(2,'0')}`;
+    ctx.fillText(lbl,x,H-PAD.b+13);
+  });
+  ctx.textAlign='left';
+}
+
+// ══════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════
+function fmtBps(bps){
+  if(bps>=1e9) return (bps/1e9).toFixed(2)+' Gbps';
+  if(bps>=1e6) return (bps/1e6).toFixed(2)+' Mbps';
+  if(bps>=1e3) return (bps/1e3).toFixed(1)+' Kbps';
+  return bps.toFixed(0)+' bps';
+}
+function setStatus(active,msg){
+  document.getElementById('status-text').innerHTML=
+    `<span class="status-dot ${active?'active':''}"></span>${msg}`;
+}
+
+window.addEventListener('resize',()=>{
+  if(!analysisResult) return;
+  const slider=document.getElementById('time-slider');
+  drawWorldMap(analysisResult, analysisResult.allBuckets[+slider.value]);
+  const sel=document.getElementById('ee-select');
+  if(sel) drawTimeline(analysisResult.eeStats[sel.value].buckets,
+    analysisResult.thWarn, analysisResult.thAlert);
+});
+
+// ══════════════════════════════════════════════════════
+// EMBEDDED SAMPLE DATA
+// ══════════════════════════════════════════════════════
+const SAMPLE_CSV = ``;
+// ── Info tooltip (fixed position, never clipped by sidebar) ─────────────
+(function(){
+  const float = document.getElementById('info-float');
+  let hideTimer;
+
+  document.addEventListener('mouseover', e => {
+    const btn = e.target.closest('.info-btn');
+    if (!btn) return;
+    clearTimeout(hideTimer);
+    const tip = btn.getAttribute('data-tip') || btn.nextElementSibling?.textContent || '';
+    float.innerHTML = tip;
+
+    const br = btn.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const tipW = 244;
+
+    // 右側に空きがあれば右、なければ左
+    if (br.right + 14 + tipW < vw) {
+      float.style.left = (br.right + 10) + 'px';
+      float.style.right = 'auto';
+      float.classList.remove('from-right'); float.classList.add('from-left');
+    } else {
+      float.style.right = (vw - br.left + 10) + 'px';
+      float.style.left = 'auto';
+      float.classList.remove('from-left'); float.classList.add('from-right');
+    }
+    // 上下中央
+    const tipH = 80;
+    let top = br.top + br.height/2 - tipH/2;
+    top = Math.max(8, Math.min(top, window.innerHeight - tipH - 8));
+    float.style.top = top + 'px';
+    float.style.display = 'block';
+  });
+
+  document.addEventListener('mouseout', e => {
+    const btn = e.target.closest('.info-btn');
+    if (!btn) return;
+    hideTimer = setTimeout(() => { float.style.display='none'; }, 120);
+  });
+})();
+
+</script>
+</body>
+</html>
