@@ -82,6 +82,7 @@ select option{background:var(--bg-card);}
   .kpi-click{cursor:pointer;transition:border-color .15s,background .15s;}
   .kpi-click:hover{border-color:var(--cyan);background:rgba(0,212,255,0.06);}
   .kpi-hint{font-size:9px;color:var(--text-dim);margin-top:5px;letter-spacing:.06em;}
+.route-row:hover{background:rgba(0,212,255,0.06)!important;cursor:pointer;}
 .kpi-label{font-size:10px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;}
 
 /* Table */
@@ -513,27 +514,77 @@ function renderResults(res) {
   const alertCnt = ees.filter(e=>eeStats[e].maxU>=thAlert).length;
   const peakUtil = Math.max(...allUtils);
 
-  // KPI
-  area.insertAdjacentHTML('beforeend',`
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">サマリー</span>
-        <div class="legend">
-          <span class="legend-item"><span class="legend-swatch" style="background:var(--green)"></span>正常</span>
-          <span class="legend-item"><span class="legend-swatch" style="background:var(--warn)"></span>警告 ≥${thWarn}%</span>
-          <span class="legend-item"><span class="legend-swatch" style="background:var(--alert)"></span>危険 ≥${thAlert}%</span>
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="kpi-grid">
-          <div class="kpi kpi-click" onclick="showKpiDetail('routes')"><div class="kpi-val">${ees.length}</div><div class="kpi-label">通信区間数</div><div class="kpi-hint">▸ 詳細</div></div>
-          <div class="kpi kpi-click" onclick="showKpiDetail('peak')"><div class="kpi-val ${peakUtil>=thAlert?'danger':''}">${peakUtil.toFixed(1)}%</div><div class="kpi-label">最大収容率</div><div class="kpi-hint">▸ 詳細</div></div>
-          <div class="kpi kpi-click" onclick="showKpiDetail('danger')"><div class="kpi-val ${alertCnt>0?'danger':''}">${alertCnt}</div><div class="kpi-label">危険経路 (≥${thAlert}%)</div><div class="kpi-hint">▸ 詳細</div></div>
-          <div class="kpi kpi-click" onclick="showKpiDetail('slots')"><div class="kpi-val">${allBuckets.length}</div><div class="kpi-label">集計時間帯数</div><div class="kpi-hint">▸ 詳細</div></div>
-        </div>
-        ${alertCnt>0?`<div class="alert-banner" style="margin-top:14px"><span class="alert-banner-icon">⚠️</span><span>収容率が <strong>${thAlert}%</strong> を超過している経路が <strong>${alertCnt}</strong> 件検出されました。</span></div>`:''}
-      </div>
-    </div>`);
+  // サマリー: 通信区間リスト（最大収容率順・最大5件表示）
+  const sortedEes = Object.entries(eeStats).sort((a,b)=>b[1].maxU-a[1].maxU);
+  const SUMMARY_MAX = 5;
+
+  function buildSummaryRows(entries) {
+    return entries.map(([ee,s]) => {
+      const lvl = s.maxU>=thAlert?'alert':s.maxU>=thWarn?'warn':'ok';
+      const lbl = lvl==='alert'?'危険':lvl==='warn'?'警告':'正常';
+      const pct = Math.min(s.maxU,100);
+      const color = lvl==='alert'?'var(--alert)':lvl==='warn'?'var(--warn)':'var(--green)';
+      const eeB64 = btoa(unescape(encodeURIComponent(ee)));
+      return '<tr class="route-row" data-ee="' + eeB64 + '" style="cursor:pointer"'
+        + '>'
+        + '<td style="font-family:Space Mono,monospace;white-space:nowrap">' + ee + '</td>'
+        + '<td><span class="badge badge-' + lvl + '">' + lbl + '</span></td>'
+        + '<td><div class="bar-wrap">'
+        + '<div class="bar-bg"><div class="bar-fill ' + lvl + '" style="width:' + pct + '%"></div></div>'
+        + '<span class="bar-pct" style="color:' + color + '">' + s.maxU.toFixed(1) + '%</span>'
+        + '</div></td>'
+        + '<td>' + fmtBps(s.avgBps) + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  const visibleEes  = sortedEes.slice(0, SUMMARY_MAX);
+  const hiddenEes   = sortedEes.slice(SUMMARY_MAX);
+  const hasMore     = hiddenEes.length > 0;
+
+  area.insertAdjacentHTML('beforeend',
+    '<div class="card">'
+    + '<div class="card-header">'
+    + '<span class="card-title">サマリー</span>'
+    + '<div class="legend">'
+    + '<span class="legend-item"><span class="legend-swatch" style="background:var(--green)"></span>正常</span>'
+    + '<span class="legend-item"><span class="legend-swatch" style="background:var(--warn)"></span>警告 ≥' + thWarn + '%</span>'
+    + '<span class="legend-item"><span class="legend-swatch" style="background:var(--alert)"></span>危険 ≥' + thAlert + '%</span>'
+    + '</div></div>'
+    + '<div class="card-body" style="padding:0"><div class="util-table-wrap">'
+    + '<table><thead><tr>'
+    + '<th>通信区間</th><th>ステータス</th><th>最大収容率</th><th>平均帯域</th>'
+    + '</tr></thead>'
+    + '<tbody id="summary-tbody">' + buildSummaryRows(visibleEes) + '</tbody>'
+    + (hasMore
+      ? '<tbody><tr><td colspan="4" style="text-align:center;padding:10px">'
+        + '<span id="summary-more" style="color:var(--cyan);cursor:pointer;font-size:12px" onclick="expandSummary()">'
+        + '… 他 ' + hiddenEes.length + ' 件（クリックで展開）</span>'
+        + '</td></tr></tbody>'
+      : '')
+    + '</table></div></div>'
+    + (alertCnt>0
+      ? '<div class="alert-banner" style="margin:0 14px 14px"><span class="alert-banner-icon">⚠️</span><span>収容率が <strong>' + thAlert + '%</strong> を超過している経路が <strong>' + alertCnt + '</strong> 件検出されました。</span></div>'
+      : '')
+    + '</div>'
+  );
+
+  // 展開ボタン用データを保持
+  window._hiddenEes = hiddenEes;
+  window._buildSummaryRows = buildSummaryRows;
+
+  // route-row クリック登録
+  function bindSummaryRows() {
+    document.querySelectorAll('#summary-tbody .route-row').forEach(function(row) {
+      row.addEventListener('click', function() {
+        const eeB64 = this.getAttribute('data-ee');
+        const ee = decodeURIComponent(escape(atob(eeB64)));
+        showRouteDetail(ee);
+      });
+    });
+  }
+  bindSummaryRows();
+  window._bindSummaryRows = bindSummaryRows;
 
   // World Map
   const mapCard = document.createElement('div');
@@ -2109,13 +2160,32 @@ function fmtTs(ts) {
   return `${s.slice(0,4)}/${s.slice(4,6)}/${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}`;
 }
 
+
+function expandSummary() {
+  const tbody = document.getElementById('summary-tbody');
+  if (!tbody || !window._hiddenEes || !window._buildSummaryRows) return;
+  tbody.innerHTML += window._buildSummaryRows(window._hiddenEes);
+  // 「…他N件」行を削除
+  const more = document.getElementById('summary-more');
+  if (more) more.closest('tr').parentNode.removeChild(more.closest('tr'));
+  window._bindSummaryRows && window._bindSummaryRows();
+}
+
+function toggleSection(el) {
+  var b = el.nextElementSibling;
+  b.style.display = b.style.display === 'none' ? 'block' : 'none';
+  var arrow = el.querySelector('span:last-child');
+  if (arrow) arrow.textContent = b.style.display === 'none' ? '▶' : '▼';
+}
+
 function showRouteDetail(ee) {
   if (!analysisResult) return;
   const { thWarn, thAlert, capBps, bucketSec } = analysisResult;
   const bSec = bucketSec || 3600;
-  const eeRows = rawRows.filter(r => r.ee === ee);
+
+  // bucket×linkId 単位で集計
   const rowMap = {};
-  for (const r of eeRows) {
+  for (const r of rawRows.filter(r2 => r2.ee === ee)) {
     const bucket = Math.floor(tsSec(r.ts) / bSec) * bSec;
     const key = bucket + '_' + r.linkId;
     if (!rowMap[key]) rowMap[key] = { bucket, linkId: r.linkId, bpsSum: 0, cnt: 0 };
@@ -2123,40 +2193,79 @@ function showRouteDetail(ee) {
     rowMap[key].cnt++;
   }
   const allRows = Object.values(rowMap)
-    .map(e => ({ bucket: e.bucket, linkId: e.linkId, bps: e.bpsSum / e.cnt, util: (e.bpsSum / e.cnt) / capBps * 100 }))
-    .filter(e => e.util >= thWarn)
-    .sort((a, b) => a.bucket - b.bucket || a.linkId.localeCompare(b.linkId));
+    .map(function(e) { return { bucket: e.bucket, linkId: e.linkId, bps: e.bpsSum/e.cnt, util: (e.bpsSum/e.cnt)/capBps*100 }; })
+    .sort(function(a,b) { return a.bucket-b.bucket || a.linkId.localeCompare(b.linkId); });
 
-  document.getElementById('modal-title').textContent = ee + ' — 閾値超え詳細';
+  const warnRows  = allRows.filter(function(r) { return r.util >= thWarn && r.util < thAlert; });
+  const alertRows = allRows.filter(function(r) { return r.util >= thAlert; });
+  const safeRows  = allRows.filter(function(r) { return r.util < thWarn; });
 
-  let bodyHtml = '';
-  if (allRows.length === 0) {
-    bodyHtml = '<div style="text-align:center;padding:28px;color:var(--green)">✓ 閾値超えなし</div>';
-  } else {
-    bodyHtml = '<div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">' + allRows.length + '件</div>'
-      + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;">'
+  const avgUtil = allRows.length > 0
+    ? (allRows.reduce(function(s,r) { return s+r.util; }, 0) / allRows.length) : 0;
+  const avgWarn = warnRows.length > 0
+    ? (warnRows.reduce(function(s,r) { return s+r.util; }, 0) / warnRows.length) : 0;
+  const avgAlert = alertRows.length > 0
+    ? (alertRows.reduce(function(s,r) { return s+r.util; }, 0) / alertRows.length) : 0;
+
+  function buildTable(rows, emptyMsg) {
+    if (rows.length === 0) {
+      return '<div style="padding:14px 8px;color:var(--text-dim);font-size:11px;text-align:center">' + emptyMsg + '</div>';
+    }
+    var t = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;">'
       + '<thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">'
       + '<th style="text-align:left;padding:4px 6px">時刻</th>'
       + '<th style="text-align:left;padding:4px 6px">リンクID</th>'
       + '<th style="text-align:right;padding:4px 6px">利用帯域</th>'
       + '<th style="text-align:right;padding:4px 6px">収容率</th>'
       + '</tr></thead><tbody>';
-    for (var i2 = 0; i2 < Math.min(allRows.length, 200); i2++) {
-      var r2 = allRows[i2];
-      var color2 = r2.util >= thAlert ? '255,80,30' : '255,190,20';
-      bodyHtml += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
-        + '<td style="padding:4px 6px;color:var(--text-dim)">' + fmtBucketLabel(r2.bucket) + '</td>'
-        + '<td style="padding:4px 6px;color:var(--cyan)">' + r2.linkId + '</td>'
-        + '<td style="padding:4px 6px;text-align:right">' + fmtBps(r2.bps) + '</td>'
-        + '<td style="padding:4px 6px;text-align:right;font-weight:700;color:rgba(' + color2 + ',1)">' + r2.util.toFixed(1) + '%</td>'
+    var limit = Math.min(rows.length, 200);
+    for (var i = 0; i < limit; i++) {
+      var r = rows[i];
+      var c = r.util >= thAlert ? '255,80,30' : r.util >= thWarn ? '255,190,20' : '0,200,255';
+      t += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+        + '<td style="padding:4px 6px;color:var(--text-dim);white-space:nowrap">' + fmtBucketLabel(r.bucket) + '</td>'
+        + '<td style="padding:4px 6px;color:var(--cyan)">' + r.linkId + '</td>'
+        + '<td style="padding:4px 6px;text-align:right">' + fmtBps(r.bps) + '</td>'
+        + '<td style="padding:4px 6px;text-align:right;font-weight:700;color:rgba(' + c + ',1)">' + r.util.toFixed(1) + '%</td>'
         + '</tr>';
     }
-    if (allRows.length > 200) {
-      bodyHtml += '<tr><td colspan="4" style="padding:4px 6px;color:var(--text-dim)">… 他' + (allRows.length - 200) + '件</td></tr>';
+    if (rows.length > 200) {
+      t += '<tr><td colspan="4" style="padding:4px 6px;color:var(--text-dim)">… 他' + (rows.length-200) + '件</td></tr>';
     }
-    bodyHtml += '</tbody></table></div>';
+    t += '</tbody></table></div>';
+    return t;
   }
-  document.getElementById('modal-body').innerHTML = bodyHtml;
+
+  // 3タブのアコーディオン形式
+  function makeSection(id, label, count, avgU, color, rows, emptyMsg, defaultOpen) {
+    var avgTxt = count > 0 ? ('平均収容率 ' + avgU.toFixed(1) + '%') : '';
+    var headerColor = color;
+    return '<div style="border:1px solid rgba(255,255,255,0.08);border-radius:6px;margin-bottom:8px;overflow:hidden">'
+      + '<div onclick="toggleSection(this)"'
+      + ' style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;cursor:pointer;background:var(--bg-panel)">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<span style="font-size:12px;font-weight:700;color:' + headerColor + '">' + label + '</span>'
+      + '<span style="font-size:10px;color:var(--text-dim)">' + count + '件</span>'
+      + (avgTxt ? '<span style="font-size:10px;color:' + headerColor + '">' + avgTxt + '</span>' : '')
+      + '</div>'
+      + '<span style="font-size:10px;color:var(--text-dim)">▼</span>'
+      + '</div>'
+      + '<div style="display:' + (defaultOpen ? 'block' : 'none') + '">'
+      + buildTable(rows, emptyMsg)
+      + '</div></div>';
+  }
+
+  document.getElementById('modal-title').textContent = ee + ' — 詳細分析';
+  document.getElementById('modal-body').innerHTML =
+    '<div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">'
+    + '全レコード ' + allRows.length + '件　全体平均収容率 ' + avgUtil.toFixed(1) + '%'
+    + '</div>'
+    + makeSection('alert', '危険 ≥' + thAlert + '%', alertRows.length, avgAlert, 'var(--alert)', alertRows,
+        '危険レコードはありません', alertRows.length > 0)
+    + makeSection('warn',  '警告 ≥' + thWarn + '%', warnRows.length, avgWarn, 'var(--warn)', warnRows,
+        '警告レコードはありません', alertRows.length === 0 && warnRows.length > 0)
+    + makeSection('all',   'すべて', allRows.length, avgUtil, 'var(--cyan)', allRows,
+        'データがありません', false);
   document.getElementById('modal-overlay').classList.add('open');
 }
 
