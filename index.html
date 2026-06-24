@@ -11,7 +11,7 @@
   --bg-deep:#0a0e1a; --bg-panel:#0f1525; --bg-card:#141c30; --border:#1e2d4a;
   --cyan:#00d4ff; --cyan-dim:rgba(0,212,255,.15); --cyan-glow:rgba(0,212,255,.4);
   --alert:#ff6b35; --alert-dim:rgba(255,107,53,.15);
-  --green:#39ff14; --green-dim:rgba(57,255,20,.12);
+  --green:#00d4ff; --green-dim:rgba(0,212,255,.12);
   --warn:#ffc832; --muted:#4a5570; --text:#c8d4ee; --text-dim:#7a8aaa;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -113,7 +113,7 @@ canvas{display:block;width:100%;}
 .empty-title{font-family:'Space Mono',monospace;font-size:13px;color:var(--muted);}
 
 /* Map */
-#map-container{width:100%;position:relative;background:#050810;overflow:auto;min-height:420px;}
+#map-container{width:100%;position:relative;background:#050810;overflow:auto;min-height:480px;}
 #leaflet-map{width:100%;height:500px;min-height:400px;}
 #leaflet-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1000;}#map-container.globe-mode{touch-action:none;cursor:grab;}#map-container.globe-mode.dragging{cursor:grabbing;}
 #world-canvas{display:block;}
@@ -222,7 +222,7 @@ canvas{display:block;width:100%;}
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-section">
-      <div class="info-wrap"><div class="section-label">ログファイル読み込み</div><span class="info-btn" tabindex="0" data-tip="CSVフォーマット（ヘッダー行不要）&lt;br&gt;列順: 時刻(14桁), 区間名, 帯域(bps), リンクID, 緯度, 経度&lt;br&gt;例: 20250115080000,東京〜ロンドン,9500000,LNK-TYO-LON,35.68,139.65">i</span></div>
+      <div class="info-wrap"><div class="section-label">ログファイル読み込み</div><span class="info-btn" tabindex="0" data-tip="CSVフォーマット（ヘッダー行不要）&lt;br&gt;列順: 時刻, ネットワーク対地, 帯域(bps), 中継A〜中継B, 緯度A, 経度A, 緯度B, 経度B&lt;br&gt;例: 20250115080000,東京〜ロンドン,9800000,TYO〜ANC,35.68,139.65,61.22,-149.90">i</span></div>
       <div class="drop-zone" id="drop-zone">
         <input type="file" id="file-input" accept=".csv,.log,.txt">
         <div class="drop-icon">📡</div>
@@ -277,14 +277,15 @@ canvas{display:block;width:100%;}
       <div style="font-size:11px;color:var(--muted);max-width:340px;line-height:1.9;margin-top:4px">
         CSVフォーマット（ヘッダー行不要）:<br>
         <span style="font-family:'Space Mono',monospace;font-size:10px;color:var(--cyan)">
-        時刻(14桁), 区間名, 帯域(bps), リンクID, 緯度, 経度
+        時刻, ネットワーク対地, 帯域(bps), 中継A〜中継B, 緯度A, 経度A, 緯度B, 経度B
         </span>
         <div style="margin-top:6px;font-size:10px;color:var(--text-dim);line-height:1.7;text-align:left">
-        ・時刻: yyyymmddhhmmss<br>
-        ・区間名: 例）東京〜ロンドン<br>
-        ・帯域: リンク帯域(bps)<br>
-        ・リンクID: 任意の文字列<br>
-        ・緯度/経度: 10進数(-90〜90 / -180〜180)
+        ・時刻: yyyymmddhhmmss（14桁）<br>
+        ・ネットワーク対地: 例）東京〜ロンドン<br>
+        ・帯域: 利用帯域(bps)<br>
+        ・中継A〜中継B: 例）TYO〜ANC<br>
+        ・緯度A,経度A: 中継Aの位置（10進数）<br>
+        ・緯度B,経度B: 中継Bの位置（10進数）
         </div>
       </div>
     </div>
@@ -300,7 +301,7 @@ let rawRows = [];
 let analysisResult = null;
 
 // ── ファイル履歴（ファイル名のみ記憶） ──────────────────────────────
-const RECENT_MAX = 5;
+const RECENT_MAX = 3;
 
 function loadRecentFiles() {
   try {
@@ -396,9 +397,27 @@ function parseCSV(text) {
     if (!line.trim() || line.startsWith('#')) continue;
     const c = line.split(',').map(s => s.trim());
     if (c.length < 6) continue;
-    const [ts, ee, bps, linkId, lat, lon] = c;
-    if (isNaN(+bps) || isNaN(+lat) || isNaN(+lon)) continue;
-    rows.push({ ts: +ts, ee: String(ee), bps: +bps, linkId: String(linkId), lat: +lat, lon: +lon });
+
+    if (c.length >= 8 && !isNaN(+c[6]) && !isNaN(+c[7])) {
+      // 新フォーマット: 時刻,区間名,帯域bps,中継A〜中継B,緯度A,経度A,緯度B,経度B
+      const [ts, ee, bps, segName, latA, lonA, latB, lonB] = c;
+      if (isNaN(+bps) || isNaN(+latA) || isNaN(+lonA)) continue;
+      const parts = segName.split(/[〜～]/);
+      const nodeA = parts[0]?.trim() || segName;
+      const nodeB = parts[1]?.trim() || segName;
+      rows.push({ ts: +ts, ee: String(ee), bps: +bps,
+                  linkId: nodeA + '-' + nodeB,
+                  lat: +latA, lon: +lonA,
+                  latB: +latB, lonB: +lonB,
+                  nodeA, nodeB });
+    } else {
+      // 旧フォーマット: 時刻,区間名,帯域bps,リンクID,緯度,経度
+      const [ts, ee, bps, linkId, lat, lon] = c;
+      if (isNaN(+bps) || isNaN(+lat) || isNaN(+lon)) continue;
+      const lid = String(linkId);
+      if (lid.endsWith('-END')) continue;
+      rows.push({ ts: +ts, ee: String(ee), bps: +bps, linkId: lid, lat: +lat, lon: +lon });
+    }
   }
   return rows;
 }
@@ -439,13 +458,46 @@ function runAnalysis() {
   // --- bucket: (ee, bucket_epoch) → { bps[], links: Set, waypoints: Map<linkId,{lat,lon}> }
   const eeMap = {}; // ee -> { bucket -> { bpsArr, waypoints:{linkId->{lat,lon}} } }
 
+  const segMap = {}; // セグメント単位集計
+
   for (const r of filtered) {
     const bucket = Math.floor(tsSec(r.ts) / aggSec) * aggSec;
+
+    // ── ee 単位集計 ──────────────────────────────────────────────────
     if (!eeMap[r.ee]) eeMap[r.ee] = {};
-    if (!eeMap[r.ee][bucket]) eeMap[r.ee][bucket] = { bpsArr:[], waypoints:{} };
+    if (!eeMap[r.ee][bucket]) eeMap[r.ee][bucket] = { bpsArr:[], waypoints:{}, wpOrder:[] };
     const slot = eeMap[r.ee][bucket];
     slot.bpsArr.push(r.bps);
-    slot.waypoints[r.linkId] = { lat: r.lat, lon: r.lon };
+    if (!r.linkId.endsWith('-END')) {
+      if (r.latB !== undefined) {
+        if (!slot.waypoints[r.nodeA]) {
+          slot.waypoints[r.nodeA] = { lat: r.lat,  lon: r.lon,  name: r.nodeA };
+          slot.wpOrder.push(r.nodeA);
+        }
+        if (!slot.waypoints[r.nodeB]) {
+          slot.waypoints[r.nodeB] = { lat: r.latB, lon: r.lonB, name: r.nodeB };
+          slot.wpOrder.push(r.nodeB);
+        }
+      } else {
+        if (!slot.waypoints[r.linkId]) slot.wpOrder.push(r.linkId);
+        slot.waypoints[r.linkId] = { lat: r.lat, lon: r.lon };
+      }
+    }
+
+    // ── セグメント単位集計（新フォーマットのみ）──────────────────────
+    if (r.latB !== undefined && !r.linkId.endsWith('-END')) {
+      const segKey = r.nodeA + '-' + r.nodeB;
+      if (!segMap[segKey]) segMap[segKey] = {};
+      if (!segMap[segKey][bucket]) segMap[segKey][bucket] = {
+        bpsArr: [], latA: r.lat, lonA: r.lon, latB: r.latB, lonB: r.lonB,
+        nodeA: r.nodeA, nodeB: r.nodeB, services: {}
+      };
+      const seg = segMap[segKey][bucket];
+      seg.bpsArr.push(r.bps);
+      if (!seg.services[r.ee]) seg.services[r.ee] = {sum:0,cnt:0};
+      seg.services[r.ee].sum += r.bps;
+      seg.services[r.ee].cnt++;
+    }
   }
 
   // --- per-ee stats
@@ -453,7 +505,11 @@ function runAnalysis() {
   for (const [ee, bmap] of Object.entries(eeMap)) {
     const buckets = Object.entries(bmap).sort((a,b)=>+a[0]-+b[0]).map(([b, slot]) => {
       const avg = slot.bpsArr.reduce((s,v)=>s+v,0) / slot.bpsArr.length;
-      return { bucket:+b, avgBps:avg, util:avg/capBps*100, waypoints:slot.waypoints };
+      const order = slot.wpOrder && slot.wpOrder.length > 0
+        ? slot.wpOrder : Object.keys(slot.waypoints);
+      const orderedWpts = {};
+      for (const k of order) { if (slot.waypoints[k]) orderedWpts[k] = slot.waypoints[k]; }
+      return { bucket:+b, avgBps:avg, util:avg/capBps*100, waypoints:orderedWpts };
     });
     const utils = buckets.map(x=>x.util);
     eeStats[ee] = {
@@ -471,7 +527,21 @@ function runAnalysis() {
     Object.values(eeStats).flatMap(s=>s.buckets.map(b=>b.bucket))
   )].sort((a,b)=>a-b);
 
-  analysisResult = { eeStats, allBuckets, capBps, thWarn, thAlert, filtered, bucketSec: aggSec };
+  // セグメント統計を生成
+  const segStats = {};
+  for (const [segKey, bmap] of Object.entries(segMap)) {
+    segStats[segKey] = Object.entries(bmap).sort((a,b)=>+a[0]-+b[0]).map(([b, seg]) => {
+      const avg = seg.bpsArr.reduce((s,v)=>s+v,0) / seg.bpsArr.length;
+      const svcs = {};
+      for (const [ee2, v] of Object.entries(seg.services)) {
+        svcs[ee2] = typeof v === 'object' ? v.sum / v.cnt : v;
+      }
+      return { bucket:+b, avgBps:avg, util:avg/capBps*100,
+               latA:seg.latA, lonA:seg.lonA, latB:seg.latB, lonB:seg.lonB,
+               nodeA:seg.nodeA, nodeB:seg.nodeB, services:svcs };
+    });
+  }
+  analysisResult = { eeStats, allBuckets, capBps, thWarn, thAlert, filtered, bucketSec: aggSec, segStats };
 
   // renderResults先にDOMを生成（スライダーはその中で作られる）
   renderResults(analysisResult);
@@ -488,7 +558,7 @@ function runAnalysis() {
     };
   }
 
-  setStatus(true, `分析完了 — ${Object.keys(eeStats).length} 通信区間`);
+  setStatus(true, `分析完了 — ${Object.keys(eeStats).length} ネットワーク対地`);
 }
 
 function updateSliderLabel(bucket) {
@@ -514,7 +584,7 @@ function renderResults(res) {
   const alertCnt = ees.filter(e=>eeStats[e].maxU>=thAlert).length;
   const peakUtil = Math.max(...allUtils);
 
-  // サマリー: 通信区間リスト（最大収容率順・最大5件表示）
+  // サマリー: ネットワーク対地リスト（最大収容率順・最大5件表示）
   const sortedEes = Object.entries(eeStats).sort((a,b)=>b[1].maxU-a[1].maxU);
   const SUMMARY_MAX = 5;
 
@@ -544,6 +614,9 @@ function renderResults(res) {
 
   area.insertAdjacentHTML('beforeend',
     '<div class="card">'
+    + (alertCnt>0
+      ? '<div class="alert-banner" style="margin:0 0 0 0;border-radius:6px 6px 0 0;border-bottom:none"><span class="alert-banner-icon">⚠️</span><span>収容率が <strong>' + thAlert + '%</strong> を超過している経路が <strong>' + alertCnt + '</strong> 件検出されました。</span></div>'
+      : '')
     + '<div class="card-header">'
     + '<span class="card-title">サマリー</span>'
     + '<div class="legend">'
@@ -553,7 +626,7 @@ function renderResults(res) {
     + '</div></div>'
     + '<div class="card-body" style="padding:0"><div class="util-table-wrap">'
     + '<table><thead><tr>'
-    + '<th>通信区間</th><th>ステータス</th><th>最大収容率</th><th>平均帯域</th>'
+    + '<th>ネットワーク対地</th><th>ステータス</th><th>最大収容率</th><th>平均帯域</th>'
     + '</tr></thead>'
     + '<tbody id="summary-tbody">' + buildSummaryRows(visibleEes) + '</tbody>'
     + (hasMore
@@ -563,9 +636,6 @@ function renderResults(res) {
         + '</td></tr></tbody>'
       : '')
     + '</table></div></div>'
-    + (alertCnt>0
-      ? '<div class="alert-banner" style="margin:0 14px 14px"><span class="alert-banner-icon">⚠️</span><span>収容率が <strong>' + thAlert + '%</strong> を超過している経路が <strong>' + alertCnt + '</strong> 件検出されました。</span></div>'
-      : '')
     + '</div>'
   );
 
@@ -601,14 +671,14 @@ function renderResults(res) {
           <button onclick="mapZoom(1)" style="width:26px;height:26px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--cyan);font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;" title="拡大">＋</button>
           <button onclick="mapZoom(-1)" style="width:26px;height:26px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--cyan);font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;" title="縮小">－</button>
         </div>
-        <span class="info-btn" data-tip="地図上の弧（トラフィック線）をクリックすると、その通信区間の経由リンクID・座標の一覧が表示されます。&lt;br&gt;弧の色は収容率を示します。&lt;br&gt;&lt;span style='color:#39ff14'&gt;■&lt;/span&gt; 正常　&lt;span style='color:#ffc832'&gt;■&lt;/span&gt; 警告　&lt;span style='color:#ff6b35'&gt;■&lt;/span&gt; 危険" tabindex="0" style="cursor:pointer;">i</span>
+        <span class="info-btn" data-tip="地図上の弧（トラフィック線）をクリックすると、そのネットワーク対地の経由リンクID・座標の一覧が表示されます。&lt;br&gt;弧の色は収容率を示します。&lt;br&gt;&lt;span style='color:#00d4ff'&gt;■&lt;/span&gt; 正常　&lt;span style='color:#ffc832'&gt;■&lt;/span&gt; 警告　&lt;span style='color:#ff6b35'&gt;■&lt;/span&gt; 危険" tabindex="0" style="cursor:pointer;">i</span>
       </div>
     </div>
     <div id="map-container">
       <div id="leaflet-map" style="display:none;"></div>
       <canvas id="globe-canvas" style="display:none;position:relative;width:100%;cursor:grab;touch-action:none;"></canvas>
       <canvas id="globe-arc-canvas" style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
-      <canvas id="world-canvas" style="display:none;position:absolute;top:0;left:0;z-index:2;cursor:default;"></canvas>
+      <canvas id="world-canvas" style="display:none;position:absolute;top:0;left:0;z-index:2;cursor:default;pointer-events:auto;"></canvas>
       <canvas id="leaflet-overlay" style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
       <canvas id="globe-overlay"   style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
     </div>
@@ -630,50 +700,6 @@ function renderResults(res) {
   area.appendChild(mapCard);
   setTimeout(() => drawWorldMap(res, allBuckets[0]), 120);
 
-  // EE Table
-  const tableRows = Object.entries(eeStats).sort((a,b)=>b[1].maxU-a[1].maxU).map(([ee,s])=>{
-    const lvl = s.maxU>=thAlert?'alert':s.maxU>=thWarn?'warn':'ok';
-    const lbl = lvl==='alert'?'危険':lvl==='warn'?'警告':'正常';
-    const pct = Math.min(s.maxU,100);
-    return `<tr>
-      <td style="font-family:'Space Mono',monospace;white-space:nowrap">${ee}</td>
-      <td><span class="badge badge-${lvl}">${lbl}</span></td>
-      <td><div class="bar-wrap">
-        <div class="bar-bg"><div class="bar-fill ${lvl}" style="width:${pct}%"></div></div>
-        <span class="bar-pct" style="color:${lvl==='alert'?'var(--alert)':lvl==='warn'?'var(--warn)':'var(--green)'}">${s.maxU.toFixed(1)}%</span>
-      </div></td>
-      <td>${s.avgU.toFixed(1)}%</td>
-      <td>${s.alertN>0?`<span style="color:var(--alert)">${s.alertN}</span>`:0} / ${s.warnN}</td>
-      <td style="white-space:nowrap">${fmtBps(s.avgBps)}</td>
-    </tr>`;
-  }).join('');
-
-  area.insertAdjacentHTML('beforeend',`
-    <div class="card">
-      <div class="card-header"><span class="card-title">通信区間別 収容率サマリー</span></div>
-      <div class="card-body" style="padding:0"><div class="util-table-wrap">
-        <table><thead><tr>
-          <th>通信区間</th><th>ステータス</th><th>最大収容率</th>
-          <th>平均収容率</th><th>危険 / 警告回数</th><th>平均帯域</th>
-        </tr></thead><tbody>${tableRows}</tbody></table>
-      </div></div>
-    </div>`);
-
-  // Timeline chart
-  const tlCard = document.createElement('div');
-  tlCard.className = 'card';
-  tlCard.innerHTML = `
-    <div class="card-header">
-      <span class="card-title">時間別収容率推移</span>
-      <select id="ee-select" style="margin-bottom:0;width:auto;font-size:11px">
-        ${ees.map(e=>`<option value="${e}">${e}</option>`).join('')}
-      </select>
-    </div>
-    <div class="card-body"><canvas id="timeline-canvas" height="180"></canvas></div>`;
-  area.appendChild(tlCard);
-  const sel = tlCard.querySelector('#ee-select');
-  sel.onchange = () => drawTimeline(eeStats[sel.value].buckets, thWarn, thAlert);
-  setTimeout(() => drawTimeline(eeStats[ees[0]].buckets, thWarn, thAlert), 80);
 }
 
 // ══════════════════════════════════════════════════════
@@ -741,27 +767,24 @@ const WORLD_LAND = [
   [-50,2],[-54,4],[-58,6],[-62,6],[-66,2],[-70,2],[-72,5],[-74,8],
   [-76,8],[-80,10]
 ]},
-// ── Europe (West) ────────────────────────────────────────────────────────
-{name:'EUW',fill:'#5c9248',stroke:'#487838',pts:[
-  [-9,38],[-8,36],[-4,36],[2,37],[4,38],[6,44],[8,46],[10,44],
-  [12,44],[14,45],[16,46],[18,45],[20,42],[22,40],[24,38],[26,39],
-  [28,42],[30,43],[28,46],[26,48],[24,50],[22,52],[20,54],[18,56],
-  [16,58],[14,56],[12,56],[10,55],[8,55],[6,58],[4,60],[6,62],
-  [8,63],[12,64],[14,66],[16,68],[18,70],[20,70],[22,68],[24,66],
-  [26,62],[24,60],[22,58],[20,56],[16,58],[14,56],[12,58],[10,58],
-  [8,56],[6,54],[4,52],[2,52],[0,50],[-2,48],[-4,48],[-6,44],
-  [-8,42],[-9,40],[-9,38]
-]},
-// ── Scandinavia ──────────────────────────────────────────────────────────
-{name:'SC',fill:'#5c9248',stroke:'#487838',pts:[
-  [14,56],[16,56],[18,58],[20,60],[20,64],[18,66],[18,70],[20,70],
-  [24,68],[28,66],[28,62],[26,60],[24,58],[22,56],[20,54],[18,54],
-  [16,56],[14,56]
+// ── Europe + W.Russia ────────────────────────────────────────────────────
+{name:'EU',fill:'#5c9248',stroke:'#487838',pts:[
+  [-10,36],[-8,36],[-4,36],[2,37],[4,38],[6,44],[8,46],[10,44],
+  [12,44],[14,44],[16,44],[18,44],[20,42],[22,40],[24,38],[26,38],
+  [28,42],[30,44],[32,46],[34,48],[36,48],[38,48],[40,48],[42,48],
+  [44,50],[46,50],[48,52],[50,54],[52,56],[54,58],[56,60],[58,58],
+  [60,58],[62,56],[60,54],[58,52],[56,50],[54,48],[52,46],[50,46],
+  [48,46],[46,48],[44,50],[42,50],[40,52],[38,52],[36,52],[34,54],
+  [32,56],[30,58],[28,60],[26,62],[24,64],[22,66],[20,68],[18,70],
+  [20,70],[22,68],[24,66],[26,62],[28,60],[26,58],[24,58],[22,58],
+  [20,56],[18,56],[16,58],[14,56],[12,56],[10,56],[8,58],[6,58],
+  [4,58],[4,56],[4,54],[4,52],[2,52],[0,50],[-2,50],[-4,48],
+  [-6,44],[-8,42],[-10,38],[-10,36]
 ]},
 // ── UK ────────────────────────────────────────────────────────────────────
 {name:'UK',fill:'#5c9248',stroke:'#487838',pts:[
-  [-5,50],[-3,50],[-2,52],[0,52],[0,54],[-2,56],[-4,58],[-6,58],
-  [-8,56],[-8,54],[-6,52],[-5,50]
+  [-5,50],[-3,50],[-2,51],[0,51],[1,52],[0,54],[-2,55],[-4,57],
+  [-5,58],[-6,58],[-5,57],[-4,56],[-4,54],[-3,52],[-4,51],[-5,50]
 ]},
 // ── Ireland ──────────────────────────────────────────────────────────────
 {name:'IE',fill:'#5c9248',stroke:'#487838',pts:[
@@ -781,7 +804,7 @@ const WORLD_LAND = [
 {name:'MG',fill:'#8da83a',stroke:'#6e8628',pts:[
   [44,-12],[48,-14],[50,-18],[50,-22],[48,-26],[46,-26],[44,-22],[44,-16],[44,-12]
 ]},
-// ── Asia (main) ──────────────────────────────────────────────────────────
+// ── Asia ─────────────────────────────────────────────────────────────────
 {name:'AS',fill:'#5e9248',stroke:'#4a7838',pts:[
   [26,42],[30,42],[34,36],[36,36],[38,34],[40,34],[42,38],[44,40],
   [48,42],[52,40],[56,38],[60,36],[62,32],[64,28],[66,24],[68,22],
@@ -803,18 +826,6 @@ const WORLD_LAND = [
   [141,39],[141,41],[140,43],[139,42],[138,40],[136,36],[134,34],
   [132,33],[131,32],[130,31]
 ]},
-// ── Hokkaido ─────────────────────────────────────────────────────────────
-{name:'HK',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [141,43],[143,44],[144,45],[144,46],[142,46],[140,44],[140,43],[141,43]
-]},
-// ── Taiwan ───────────────────────────────────────────────────────────────
-{name:'TW',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [120,22],[122,24],[122,26],[120,26],[120,24],[120,22]
-]},
-// ── Sri Lanka ────────────────────────────────────────────────────────────
-{name:'SL',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [80,10],[82,8],[82,6],[80,6],[80,8],[80,10]
-]},
 // ── Australia ────────────────────────────────────────────────────────────
 {name:'AU',fill:'#b07235',stroke:'#8e5a28',pts:[
   [114,-22],[118,-18],[122,-18],[126,-16],[128,-14],[130,-12],[132,-12],
@@ -824,44 +835,16 @@ const WORLD_LAND = [
   [130,-32],[128,-34],[126,-34],[124,-32],[122,-30],[120,-28],[118,-26],
   [116,-24],[114,-22]
 ]},
-// ── New Zealand (North) ──────────────────────────────────────────────────
-{name:'NZN',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [172,-34],[174,-36],[176,-38],[178,-38],[176,-40],[174,-38],[172,-36],[172,-34]
-]},
-// ── New Zealand (South) ──────────────────────────────────────────────────
-{name:'NZS',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [168,-44],[170,-44],[172,-44],[172,-46],[170,-48],[168,-46],[168,-44]
-]},
-// ── Borneo ───────────────────────────────────────────────────────────────
-{name:'BO',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [108,2],[110,4],[114,6],[116,6],[118,4],[118,2],[116,0],[114,-2],
-  [112,-4],[108,-4],[108,0],[108,2]
-]},
-// ── Sumatra ──────────────────────────────────────────────────────────────
-{name:'SU',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [96,4],[100,4],[104,2],[106,0],[106,-2],[104,-4],[102,-4],[98,-2],[96,2],[96,4]
-]},
-// ── Java ─────────────────────────────────────────────────────────────────
-{name:'JV',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [106,-6],[108,-8],[112,-8],[114,-8],[112,-8],[108,-8],[106,-6]
-]},
-// ── Philippines ──────────────────────────────────────────────────────────
-{name:'PH',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [118,8],[120,10],[122,12],[124,14],[122,16],[120,14],[118,12],[118,8]
-]},
-// ── Cuba ─────────────────────────────────────────────────────────────────
-{name:'CU',fill:'#5e9248',stroke:'#4a7838',pts:[
-  [-85,22],[-82,22],[-80,22],[-76,22],[-75,20],[-78,20],[-82,20],[-84,20],[-85,22]
+// ── New Zealand ──────────────────────────────────────────────────────────
+{name:'NZ',fill:'#5e9248',stroke:'#4a7838',pts:[
+  [172,-34],[174,-36],[176,-38],[178,-38],[176,-40],[174,-38],[172,-36],
+  [172,-34],[168,-44],[170,-44],[172,-44],[172,-46],[170,-48],[168,-46],[168,-44]
 ]},
 // ── Antarctica ───────────────────────────────────────────────────────────
 {name:'AN',fill:'#e8f4ff',stroke:'#c0d8f0',pts:[
   [-180,-70],[-150,-68],[-120,-66],[-90,-70],[-60,-70],[-30,-70],
   [0,-68],[30,-66],[60,-68],[90,-68],[120,-68],[150,-68],[180,-70],
   [180,-90],[-180,-90],[-180,-70]
-]},
-// ── Arctic (simplified) ──────────────────────────────────────────────────
-{name:'AR',fill:'#ddeef8',stroke:'#b8d4e8',pts:[
-  [-180,78],[-90,80],[0,82],[90,80],[180,78],[180,90],[-180,90],[-180,78]
 ]},
 ];
 
@@ -1089,7 +1072,16 @@ function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
     const thick  = 2.0 + (bObj.avgBps/maxBps)*5;
 
     const [,first] = wpts[0], [,last] = wpts[wpts.length-1];
-    const arcPts = greatCirclePoints(first.lon, first.lat, last.lon, last.lat, 120);
+    // 各ウェイポイント間を順番につないだ大圏弧
+    const nSegOvl = Math.max(1, wpts.length - 1);
+    const ptsOvl  = Math.max(20, Math.floor(120 / nSegOvl));
+    const arcPts  = [];
+    for (let wi = 0; wi < wpts.length - 1; wi++) {
+      const [,wpA] = wpts[wi], [,wpB] = wpts[wi+1];
+      const sp2 = greatCirclePoints(wpA.lon, wpA.lat, wpB.lon, wpB.lat, ptsOvl);
+      if (wi > 0) sp2.shift();
+      arcPts.push(...sp2);
+    }
     // 経度を連続的に正規化（太平洋越え経路が折れ曲がらないよう）
     const cLon = lmap ? lmap.getCenter().lng : 139.69;
     const normArc = [];
@@ -1168,7 +1160,7 @@ function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
   }
 
   // % labels
-  const fszPct=Math.max(10,Math.min(13,W/80));
+  const fszPct=Math.max(12,Math.min(15,W/70));
   ctx.font=`bold ${fszPct}px 'Space Mono'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
   for(const{mx,my,util,rgb}of hitAreas){
     const lbl=`${util.toFixed(0)}%`, tw=ctx.measureText(lbl).width;
@@ -1376,7 +1368,7 @@ function drawMercatorCanvas(res, activeBucket) {
 
   const container = document.getElementById('map-container');
   const W = container.offsetWidth || 600;
-  const H = Math.round(W * 0.65);
+  const H = Math.round(W * 0.80);
   const canvas = document.getElementById('world-canvas');
   const dpr = window.devicePixelRatio || 1;
   canvas.width = W * dpr; canvas.height = H * dpr;
@@ -1462,7 +1454,16 @@ function drawMercatorCanvas(res, activeBucket) {
     const [,first]=wpts[0],[,last]=wpts[wpts.length-1];
     const eeParts=ee.split(/[〜～\-–—]/);
     const cityFrom=eeParts[0]?.trim()||ee, cityTo=eeParts[1]?.trim()||ee;
-    const arcPts=greatCirclePoints(first.lon,first.lat,last.lon,last.lat,120);
+    // 各ウェイポイント間を順番につないだ大圏弧を生成
+    const nSeg2D = Math.max(1, wpts.length - 1);
+    const ptsPerSeg = Math.max(20, Math.floor(120 / nSeg2D));
+    const arcPts = [];
+    for (let wi = 0; wi < wpts.length - 1; wi++) {
+      const [,wpA] = wpts[wi], [,wpB] = wpts[wi+1];
+      const segPts = greatCirclePoints(wpA.lon, wpA.lat, wpB.lon, wpB.lat, ptsPerSeg);
+      if (wi > 0) segPts.shift(); // 重複点を除去
+      arcPts.push(...segPts);
+    }
 
     // ── 経度を「連続的」に正規化（折れ線にならないよう） ──────────────
     // 東京中心(mercCenterLon)からの相対経度で管理し、
@@ -1553,15 +1554,53 @@ function drawMercatorCanvas(res, activeBucket) {
     });
     const midAll=allScreenPts[Math.floor(allScreenPts.length/2)]||allScreenPts[0];
     if(!midAll) continue;
-    hitAreas.push({ee,util,bObj,mx:midAll[0],my:midAll[1],rgb,sp:allScreenPts,thick});
+    const wpNames2D = Object.values(bObj.waypoints).map(wp=>wp.name||'').filter(Boolean);
+    hitAreas.push({ee,util,bObj,mx:midAll[0],my:midAll[1],rgb,sp:allScreenPts,thick,cityPath:wpNames2D,isSeg:false});
+
+    // セグメント単位hitAreas（新フォーマット）
+    if (analysisResult && analysisResult.segStats) {
+      const wpArr = Object.values(bObj.waypoints);
+      for (let si=0; si<wpArr.length-1; si++) {
+        const wpA=wpArr[si], wpB=wpArr[si+1];
+        if (!wpA.name||!wpB.name) continue;
+        const segKey=wpA.name+'-'+wpB.name;
+        const segData=analysisResult.segStats[segKey];
+        if (!segData||!segData.length) continue;
+        const segBObj=segData.reduce((p,c)=>Math.abs(c.bucket-activeBucket)<Math.abs(p.bucket-activeBucket)?c:p);
+        const segPts=greatCirclePoints(wpA.lon,wpA.lat,wpB.lon,wpB.lat,30);
+        const segNorm=[]; let pn=segPts[0][0]-mercCenterLon;
+        while(pn>180)pn-=360; while(pn<-180)pn+=360;
+        segNorm.push([pn+mercCenterLon,segPts[0][1]]);
+        for(let k=1;k<segPts.length;k++){
+          let cn=segPts[k][0]-mercCenterLon; while(cn>180)cn-=360; while(cn<-180)cn+=360;
+          let d=cn-pn; if(d>180)d-=360; if(d<-180)d+=360; pn+=d;
+          segNorm.push([pn+mercCenterLon,segPts[k][1]]);
+        }
+        const segSP=segNorm.map(([lo,la])=>merc(lo,la));
+        const segMid=segSP[Math.floor(segSP.length/2)];
+        const segUtil=segBObj.util;
+        const segRgb=segUtil>=(analysisResult.thAlert||90)?'255,107,53':segUtil>=(analysisResult.thWarn||70)?'255,200,50':'0,212,255';
+        hitAreas.push({ee,segKey,nodeA:wpA.name,nodeB:wpB.name,
+          util:segUtil,bObj:segBObj,rgb:segRgb,
+          mx:segMid[0],my:segMid[1],sp:segSP,thick,
+          cityPath:[wpA.name,wpB.name],isSeg:true,
+          services:segBObj.services||{}});
+      }
+    }
 
     // ノード: wptsの各経度をnormPts始点基準で連続正規化してmerc()で描画
     {
       const baseNorm = normPts[0][0]; // 始点の正規化経度
-      const baseRaw  = arcPts[0][0];  // 始点の生経度
-      wpts.forEach(([,wp],i)=>{
+      const baseRaw  = wpts[0][1].lon; // 始点ウェイポイントの実経度
+      wpts.forEach(([lid,wp],i)=>{
         const isEnd=i===0||i===wpts.length-1;
-        const label=isEnd?(i===0?cityFrom:cityTo):null;
+        let label;
+        if (isEnd) {
+          label = i===0 ? cityFrom : cityTo;
+        } else {
+          // wp.name(新フォーマット) → lid が都市コード単体 → linkID末尾
+          label = wp.name || lid || null;
+        }
         // wp.lon を baseNorm 基準で連続正規化
         let diff = wp.lon - baseRaw;
         while(diff >  180) diff -= 360;
@@ -1573,19 +1612,33 @@ function drawMercatorCanvas(res, activeBucket) {
     }
   }
 
-  // ── ノード描画 ──
+  // ── ノード描画（グロー円・ひし形）──
   for(const{nx,ny,isEnd,rgb}of mercNodes){
+    if(!isFinite(nx)||!isFinite(ny)) continue;
     if(isEnd){
-      const ng=ctx.createRadialGradient(nx,ny,1,nx,ny,8);
-      ng.addColorStop(0,`rgba(${rgb},0.4)`);ng.addColorStop(1,`rgba(${rgb},0)`);
-      ctx.beginPath();ctx.arc(nx,ny,8,0,Math.PI*2);ctx.fillStyle=ng;ctx.fill();
+      // グロー
+      const ng=ctx.createRadialGradient(nx,ny,1,nx,ny,14);
+      ng.addColorStop(0,`rgba(${rgb},0.45)`);ng.addColorStop(1,`rgba(${rgb},0)`);
+      ctx.beginPath();ctx.arc(nx,ny,14,0,Math.PI*2);ctx.fillStyle=ng;ctx.fill();
+      // リング
+      ctx.beginPath();ctx.arc(nx,ny,6,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(${rgb},0.9)`;ctx.lineWidth=2;ctx.stroke();
+      ctx.beginPath();ctx.arc(nx,ny,6,0,Math.PI*2);
+      ctx.fillStyle='rgba(5,12,28,0.85)';ctx.fill();
+      ctx.beginPath();ctx.arc(nx,ny,3,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${rgb},1)`;ctx.fill();
+    } else {
+      // 中継点: ひし形
+      const s=5;
+      ctx.beginPath();
+      ctx.moveTo(nx,ny-s);ctx.lineTo(nx+s,ny);
+      ctx.lineTo(nx,ny+s);ctx.lineTo(nx-s,ny);ctx.closePath();
+      ctx.fillStyle='rgba(200,220,255,0.85)';ctx.fill();
+      ctx.strokeStyle='rgba(5,12,28,0.7)';ctx.lineWidth=1;ctx.stroke();
     }
-    ctx.beginPath();ctx.arc(nx,ny,isEnd?5:3.5,0,Math.PI*2);
-    ctx.fillStyle=isEnd?`rgba(${rgb},0.95)`:'rgba(200,212,238,0.6)';ctx.fill();
-    ctx.strokeStyle='#050810';ctx.lineWidth=1;ctx.stroke();
   }
   // ── 収容率ラベル ──
-  const fszPct=Math.max(9,Math.min(12,W/90));
+  const fszPct=Math.max(11,Math.min(14,W/75));
   ctx.font=`bold ${fszPct}px 'Space Mono'`;ctx.textAlign='center';ctx.textBaseline='bottom';
   for(const{mx,my,util,rgb}of hitAreas){
     const lbl=`${util.toFixed(0)}%`,tw=ctx.measureText(lbl).width;
@@ -1593,14 +1646,25 @@ function drawMercatorCanvas(res, activeBucket) {
     ctx.beginPath();ctx.roundRect(mx-tw/2-4,my-fszPct-10,tw+8,fszPct+6,3);ctx.fill();
     ctx.fillStyle=`rgba(${rgb},1)`;ctx.fillText(lbl,mx,my-4);
   }
-  // ── 都市名ラベル（ノード付近）──
-  const fszCity=Math.max(9,Math.min(11,W/95));
+  // ── 都市名ラベル（全ノード、重複排除・端点は下・中継点は上）──
+  const fszCity=Math.max(11,Math.min(13,W/80));
   ctx.font=`bold ${fszCity}px 'Inter'`;ctx.textAlign='center';ctx.textBaseline='top';
-  for(const{nx,ny,label,rgb}of mercNodes.filter(n=>n.isEnd&&n.label)){
-    const tw=ctx.measureText(label).width,pad=3;
-    ctx.fillStyle='rgba(5,10,22,0.82)';
-    ctx.beginPath();ctx.roundRect(nx-tw/2-pad,ny+7,tw+pad*2,fszCity+5,3);ctx.fill();
-    ctx.fillStyle=`rgba(${rgb},1)`;ctx.fillText(label,nx,ny+9);
+  // 近い位置の同名ラベルを排除
+  const drawnLabels=[];
+  for(const{nx,ny,isEnd,label,rgb}of mercNodes){
+    if(!label||!isFinite(nx)||!isFinite(ny)) continue;
+    // 同じラベルが近くに既に描かれていればスキップ
+    const dup = drawnLabels.find(d=>d.label===label && Math.hypot(d.nx-nx,d.ny-ny)<30);
+    if(dup) continue;
+    drawnLabels.push({nx,ny,label});
+    const tw=ctx.measureText(label).width,pad=4;
+    const bx=nx-tw/2-pad;
+    const by=isEnd ? ny+10 : ny-fszCity-14;
+    ctx.fillStyle='rgba(5,12,28,0.88)';
+    ctx.beginPath();ctx.roundRect(bx,by,tw+pad*2,fszCity+6,3);ctx.fill();
+    ctx.strokeStyle=`rgba(${rgb},0.4)`;ctx.lineWidth=0.8;
+    ctx.beginPath();ctx.roundRect(bx,by,tw+pad*2,fszCity+6,3);ctx.stroke();
+    ctx.fillStyle=`rgba(${rgb},1)`;ctx.fillText(label,nx,by+3);
   }
   const fsz=Math.max(9,Math.min(11,W/100));
   ctx.font=`bold ${fsz}px 'Inter'`;ctx.textBaseline='middle';
@@ -1765,7 +1829,16 @@ function drawGlobe(res, activeBucket) {
     const thick  = 1.5 + (bObj.avgBps/maxBps)*4.5;
     const [,first] = wpts[0];
     const [,last]  = wpts[wpts.length-1];
-    const arcPts   = greatCirclePoints(first.lon,first.lat,last.lon,last.lat,80);
+    // 各ウェイポイント間を順番につないだ大圏弧
+    const nSeg3D = Math.max(1, wpts.length - 1);
+    const ptsPerSeg3D = Math.max(16, Math.floor(80 / nSeg3D));
+    const arcPts = [];
+    for (let wi = 0; wi < wpts.length - 1; wi++) {
+      const [,wpA] = wpts[wi], [,wpB] = wpts[wi+1];
+      const segPts = greatCirclePoints(wpA.lon, wpA.lat, wpB.lon, wpB.lat, ptsPerSeg3D);
+      if (wi > 0) segPts.shift();
+      arcPts.push(...segPts);
+    }
     const proj     = arcPts.map(([lo,la]) => orthoProject(lo,la,globeLon,globeLat,cx,cy,R));
     const subSegs  = [];
     let curSeg = [];
@@ -1801,8 +1874,9 @@ function drawGlobe(res, activeBucket) {
     }
 
     const midVis = allVis[Math.floor(allVis.length/2)];
-    const visPts=proj.filter(p=>p.visible).map(p=>[p.px,p.py]);
-    if (midVis) hitAreas.push({ee,util,bObj,mx:midVis.px,my:midVis.py,rgb,midVis,sp:visPts,thick});
+    const visPts = proj.filter(p=>p.visible).map(p=>[p.px,p.py]);
+    const cityPath3D = Object.values(bObj.waypoints).map(wp=>wp.name||'').filter(Boolean);
+    if (midVis) hitAreas.push({ee,util,bObj,mx:midVis.px,my:midVis.py,rgb,midVis,sp:visPts,thick,cityPath:cityPath3D,isSeg:false});
 
     const eeParts = ee.split(/[〜～\-–—]/);
     const cityFrom = eeParts[0]?.trim()||ee;
@@ -1812,20 +1886,70 @@ function drawGlobe(res, activeBucket) {
     if (pF.visible) cityLabels.push({p:pF, label:cityFrom, rgb});
     if (pL.visible) cityLabels.push({p:pL, label:cityTo,   rgb});
 
+    // ── セグメント単位 hitAreas（2Dと同仕様）──────────────────────────
+    if (analysisResult && analysisResult.segStats) {
+      const wpArr = Object.values(bObj.waypoints);
+      for (let si = 0; si < wpArr.length - 1; si++) {
+        const wpA = wpArr[si], wpB = wpArr[si+1];
+        if (!wpA.name || !wpB.name) continue;
+        const segKey = wpA.name + '-' + wpB.name;
+        const segData = analysisResult.segStats[segKey];
+        if (!segData || !segData.length) continue;
+        const segBObj = segData.reduce((p,c) =>
+          Math.abs(c.bucket-activeBucket) < Math.abs(p.bucket-activeBucket) ? c : p);
+        // セグメントの大圏弧を投影
+        const segArc = greatCirclePoints(wpA.lon, wpA.lat, wpB.lon, wpB.lat, 40);
+        const segProj = segArc.map(([lo,la]) => orthoProject(lo,la,globeLon,globeLat,cx,cy,R));
+        const segVis = segProj.filter(p=>p.visible).map(p=>[p.px,p.py]);
+        if (segVis.length < 2) continue;
+        const segMid = segVis[Math.floor(segVis.length/2)];
+        const segUtil = segBObj.util;
+        const segRgb = segUtil>=(analysisResult.thAlert||90)?'255,107,53':segUtil>=(analysisResult.thWarn||70)?'255,200,50':'0,212,255';
+        hitAreas.push({
+          ee, segKey, nodeA:wpA.name, nodeB:wpB.name,
+          util:segUtil, bObj:segBObj, rgb:segRgb,
+          mx:segMid[0], my:segMid[1], sp:segVis, thick,
+          cityPath:[wpA.name, wpB.name], isSeg:true,
+          services: segBObj.services||{}
+        });
+      }
+    }
+
     // Waypoint nodes (collect for later)
-    wpts.forEach(([,wp],i) => {
+    wpts.forEach(([lid,wp],i) => {
       const p = orthoProject(wp.lon,wp.lat,globeLon,globeLat,cx,cy,R);
       if (!p.visible) return;
       const isEnd = i===0||i===wpts.length-1;
       nodeList.push({p, isEnd, rgb});
+      // 中継点ラベル: wp.name 優先
+      if (!isEnd) {
+        const midLabel = wp.name || (lid.split('-').pop()) || '';
+        if (midLabel) cityLabels.push({p, label: midLabel, rgb});
+      }
     });
   }
 
   // ── Draw nodes on top of arcs ──────────────────────────────────────────
   for (const {p,isEnd,rgb} of nodeList) {
-    ctx.beginPath(); ctx.arc(p.px,p.py,isEnd?5:3,0,Math.PI*2);
-    ctx.fillStyle=isEnd?`rgba(${rgb},0.95)`:'rgba(180,200,230,0.7)'; ctx.fill();
-    ctx.strokeStyle='rgba(5,8,16,0.8)'; ctx.lineWidth=1; ctx.stroke();
+    if (!isFinite(p.px)||!isFinite(p.py)) continue;
+    if (isEnd) {
+      const ng=ctx.createRadialGradient(p.px,p.py,1,p.px,p.py,14);
+      ng.addColorStop(0,`rgba(${rgb},0.45)`); ng.addColorStop(1,`rgba(${rgb},0)`);
+      ctx.beginPath(); ctx.arc(p.px,p.py,14,0,Math.PI*2); ctx.fillStyle=ng; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.px,p.py,6,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(${rgb},0.9)`; ctx.lineWidth=2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.px,p.py,6,0,Math.PI*2);
+      ctx.fillStyle='rgba(5,12,28,0.85)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.px,p.py,3,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${rgb},1)`; ctx.fill();
+    } else {
+      const s=5;
+      ctx.beginPath();
+      ctx.moveTo(p.px,p.py-s); ctx.lineTo(p.px+s,p.py);
+      ctx.lineTo(p.px,p.py+s); ctx.lineTo(p.px-s,p.py); ctx.closePath();
+      ctx.fillStyle='rgba(200,220,255,0.85)'; ctx.fill();
+      ctx.strokeStyle='rgba(5,12,28,0.7)'; ctx.lineWidth=1; ctx.stroke();
+    }
   }
 
   // ── Draw midpoint % labels ─────────────────────────────────────────────
@@ -1841,11 +1965,13 @@ function drawGlobe(res, activeBucket) {
   const fszC = Math.max(9,Math.min(11,W/95));
   ctx.font=`bold ${fszC}px 'Inter'`; ctx.textAlign='center'; ctx.textBaseline='top';
   for (const {p,label,rgb} of cityLabels) {
-    const tw = ctx.measureText(label).width;
-    const pad=4, lx=p.px, ly=p.py+7;
-    ctx.fillStyle='rgba(5,8,16,0.88)';
-    ctx.beginPath(); ctx.roundRect(lx-tw/2-pad,ly-2,tw+pad*2,fszC+6,3); ctx.fill();
-    ctx.fillStyle=`rgba(${rgb},1)`; ctx.fillText(label,lx,ly);
+    const tw=ctx.measureText(label).width, pad=4;
+    const lx=p.px, ly=p.py+10;
+    ctx.fillStyle='rgba(5,12,28,0.88)';
+    ctx.beginPath(); ctx.roundRect(lx-tw/2-pad,ly,tw+pad*2,fszC+6,3); ctx.fill();
+    ctx.strokeStyle=`rgba(${rgb},0.4)`; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.roundRect(lx-tw/2-pad,ly,tw+pad*2,fszC+6,3); ctx.stroke();
+    ctx.fillStyle=`rgba(${rgb},1)`; ctx.fillText(label,lx,ly+3);
   }
 
   ctx.textAlign='left'; ctx.textBaseline='alphabetic';
@@ -1890,23 +2016,32 @@ function greatCirclePoints(lon1,lat1,lon2,lat2,n) {
 
 // 線上距離判定ユーティリティ
 function hitTestArcs(mx, my) {
-  for (const h of hitAreas) {
+  const segAreas=hitAreas.filter(h=>h.isSeg), eeAreas=hitAreas.filter(h=>!h.isSeg);
+  const testOrder=segAreas.length>0?[...segAreas,...eeAreas]:eeAreas;
+  for (const h of testOrder) {
+    // まずミッドポイントとの距離で粗い判定（高速）
+    const roughDist = Math.hypot(mx-h.mx, my-h.my);
     if (h.sp && h.sp.length > 1) {
-      for (let i = 1; i < h.sp.length; i++) {
-        const p0 = h.sp[i-1], p1 = h.sp[i];
+      // 粗い判定: 300px 以上離れていればスキップ
+      if (roughDist > 300) continue;
+      // 間引き（4点おきに判定）して高速化
+      const step = h.sp.length > 80 ? 3 : 1;
+      for (let i = step; i < h.sp.length; i += step) {
+        const p0 = h.sp[i-step], p1 = h.sp[i];
         if (!p0 || !p1) continue;
         const x1 = Array.isArray(p0) ? p0[0] : p0.px;
         const y1 = Array.isArray(p0) ? p0[1] : p0.py;
         const x2 = Array.isArray(p1) ? p1[0] : p1.px;
         const y2 = Array.isArray(p1) ? p1[1] : p1.py;
-        const dx = x2-x1, dy = y2-y1, len = Math.sqrt(dx*dx+dy*dy);
-        if (len < 1) continue;
-        const t = Math.max(0, Math.min(1, ((mx-x1)*dx+(my-y1)*dy)/(len*len)));
-        const dist = Math.sqrt((mx-x1-t*dx)**2+(my-y1-t*dy)**2);
-        if (dist < Math.max((h.thick||2)*2.5, 12)) return h;
+        const dx = x2-x1, dy = y2-y1, lenSq = dx*dx+dy*dy;
+        if (lenSq < 1) continue;
+        const t = Math.max(0, Math.min(1, ((mx-x1)*dx+(my-y1)*dy)/lenSq));
+        const distSq = (mx-x1-t*dx)**2+(my-y1-t*dy)**2;
+        const threshold = Math.max((h.thick||2)*2.5, 12);
+        if (distSq < threshold*threshold) return h;
       }
     } else {
-      if (Math.hypot(mx-h.mx, my-h.my) < 24) return h;
+      if (roughDist < 24) return h;
     }
   }
   return null;
@@ -1920,23 +2055,32 @@ function onCanvasHit(clientX, clientY) {
   return hitTestArcs(clientX - rect.left, clientY - rect.top);
 }
 
-// マウスクリック
+// マウスクリック（world-canvas の範囲内のみ）
 document.addEventListener('click', e => {
-  const h = onCanvasHit(e.clientX, e.clientY);
-  if (h) showModal(h);
+  const canvas = document.getElementById('world-canvas');
+  if (!canvas || canvas.style.display === 'none') return;
+  const rect = canvas.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right ||
+      e.clientY < rect.top  || e.clientY > rect.bottom) return;
+  const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
+  if (h) { e.stopPropagation(); showModal(h); }
 });
 
-// マウスホバー
+// マウスホバー（スロットリングで性能改善）
+let _hoverFrame = null;
 document.addEventListener('mousemove', e => {
-  const canvas = document.getElementById('world-canvas');
-  if (!canvas || canvas.style.display === 'none') { hideTooltip(); return; }
-  const rect = canvas.getBoundingClientRect();
-  // canvasの範囲外なら非表示
-  if (e.clientX < rect.left || e.clientX > rect.right ||
-      e.clientY < rect.top  || e.clientY > rect.bottom) { hideTooltip(); return; }
-  const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
-  if (h) { showTooltip(e.clientX, e.clientY, h); canvas.style.cursor='pointer'; }
-  else   { hideTooltip(); canvas.style.cursor='default'; }
+  if (_hoverFrame) return; // 前フレームがまだ処理中なら無視
+  _hoverFrame = requestAnimationFrame(() => {
+    _hoverFrame = null;
+    const canvas = document.getElementById('world-canvas');
+    if (!canvas || canvas.style.display === 'none') { hideTooltip(); return; }
+    const rect = canvas.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right ||
+        e.clientY < rect.top  || e.clientY > rect.bottom) { hideTooltip(); return; }
+    const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
+    if (h) { showTooltip(e.clientX, e.clientY, h); canvas.style.cursor='pointer'; }
+    else   { hideTooltip(); canvas.style.cursor='default'; }
+  });
 });
 
 // タッチタップ（スマホ対応）
@@ -1958,14 +2102,37 @@ document.addEventListener('touchend', e => {
 
 function showTooltip(cx, cy, h) {
   const tt = document.getElementById('tooltip');
-  document.getElementById('tt-title').textContent = h.ee;
-  document.getElementById('tt-body').innerHTML =
-    `収容率: <b style="color:rgba(${h.rgb},1)">${h.util.toFixed(1)}%</b><br>` +
-    `平均帯域: ${fmtBps(h.bObj.avgBps)}<br>` +
-    `経由リンク数: ${Object.keys(h.bObj.waypoints).length}<br>` +
-    `<span style="color:var(--text-dim);font-size:10px">クリックで詳細を表示</span>`;
+  let titleText, bodyHtml;
+
+  if (h.isSeg && h.nodeA && h.nodeB) {
+    // ── セグメント区間のホバー ──
+    titleText = h.nodeA + ' 〜 ' + h.nodeB;
+    const totalBps = Object.values(h.services||{}).reduce((s,v)=>s+v,0);
+    const svcCount = Object.keys(h.services||{}).length;
+    bodyHtml =
+      '収容率: <b style="color:rgba(' + h.rgb + ',1)">' + h.util.toFixed(1) + '%</b>　' +
+      '合計帯域: ' + fmtBps(totalBps || h.bObj.avgBps) + '<br>' +
+      '<span style="color:var(--text-dim);font-size:10px">通過サービス: ' + svcCount + '件　クリックで詳細</span>';
+  } else {
+    // ── 全体区間のホバー ──
+    const path = h.cityPath && h.cityPath.length > 0 ? h.cityPath.join(' → ') : h.ee;
+    titleText = h.ee;
+    bodyHtml =
+      '<span style="color:var(--text-dim);font-size:10px">' + path + '</span><br>' +
+      '収容率: <b style="color:rgba(' + h.rgb + ',1)">' + h.util.toFixed(1) + '%</b>　' +
+      '帯域: ' + fmtBps(h.bObj.avgBps) + '<br>' +
+      '<span style="color:var(--text-dim);font-size:10px">クリックで詳細</span>';
+  }
+
+  document.getElementById('tt-title').textContent = titleText;
+  document.getElementById('tt-body').innerHTML = bodyHtml;
   tt.style.display = 'block';
-  tt.style.left = (cx+14)+'px'; tt.style.top = (cy-10)+'px';
+  const ttW = 260, ttH = 90;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let tx = cx + 14, ty = cy - 10;
+  if (tx + ttW > vw) tx = cx - ttW - 10;
+  if (ty + ttH > vh) ty = cy - ttH;
+  tt.style.left = tx + 'px'; tt.style.top = ty + 'px';
 }
 function hideTooltip() { document.getElementById('tooltip').style.display='none'; }
 
@@ -1991,8 +2158,8 @@ function showKpiDetail(type) {
   let title = '', body = '';
 
   if (type === 'routes') {
-    // ── 全通信区間一覧（クリックで閾値超え詳細） ──────────────────────
-    title = `通信区間一覧（全 ${ees.length} 区間）`;
+    // ── 全ネットワーク対地一覧（クリックで閾値超え詳細） ──────────────────────
+    title = `ネットワーク対地一覧（全 ${ees.length} 区間）`;
     const sorted = [...ees].sort((a,b) => b[1].maxU - a[1].maxU);
     body = '<div style="font-size:10px;color:var(--text-dim);margin-bottom:8px">区間名をクリックすると閾値超え詳細が表示されます</div>'
       + '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
@@ -2120,7 +2287,7 @@ function showKpiDetail(type) {
     });
     const maxAvg = Math.max(...avgByBucket.map(b => b.max));
     body = `
-      <div style="font-size:10px;color:var(--text-dim);margin-bottom:10px">各時間帯の全通信区間 平均収容率 / 最大収容率</div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:10px">各時間帯の全ネットワーク対地 平均収容率 / 最大収容率</div>
       <div style="max-height:360px;overflow-y:auto">
       <table style="width:100%;border-collapse:collapse;font-family:'Space Mono',monospace;font-size:11px;">
         <thead><tr>
@@ -2255,7 +2422,11 @@ function showRouteDetail(ee) {
       + '</div></div>';
   }
 
-  document.getElementById('modal-title').textContent = ee + ' — 詳細分析';
+  const eeWps = analysisResult && analysisResult.eeStats[ee]
+    ? Object.values(analysisResult.eeStats[ee].buckets[0]?.waypoints||{}).map(function(wp){return wp.name||'';}).filter(Boolean)
+    : [];
+  const eeRTitle = eeWps.length >= 2 ? eeWps[0] + '〜' + eeWps[eeWps.length-1] : ee;
+  document.getElementById('modal-title').textContent = eeRTitle + ' — 詳細分析';
   document.getElementById('modal-body').innerHTML =
     '<div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">'
     + '全レコード ' + allRows.length + '件　全体平均収容率 ' + avgUtil.toFixed(1) + '%'
@@ -2274,69 +2445,50 @@ function showModal(h) {
   const res = analysisResult;
   if (!res) return;
   const { thWarn, thAlert, capBps } = res;
-
-  // クリックした時刻スロット
   const slotBucket = h.bObj.bucket;
-  const bucketSec = res.bucketSec || 3600;
 
-  // このスロットのrawRowsを取得
-  const slotRows = rawRows.filter(r => {
-    const b = Math.floor(tsSec(r.ts) / bucketSec) * bucketSec;
-    return r.ee === h.ee && b === slotBucket;
-  });
+  if (h.isSeg && h.nodeA && h.nodeB) {
+    // ── セグメント（区間）クリック: 通過サービス一覧 ──────────────────
+    document.getElementById('modal-title').textContent =
+      h.nodeA + ' 〜 ' + h.nodeB + ' — ' + fmtBucketLabel(slotBucket);
 
-  // linkId単位で集計（同一リンクは平均帯域を使用）
-  const linkMap = {};
-  for (const r of slotRows) {
-    if (!linkMap[r.linkId]) linkMap[r.linkId] = { linkId: r.linkId, bpsSum: 0, cnt: 0 };
-    linkMap[r.linkId].bpsSum += r.bps;
-    linkMap[r.linkId].cnt++;
-  }
+    const services = h.services || {};
+    const svcList = Object.entries(services)
+      .map(([ee, bps]) => ({ ee, bps, util: bps/capBps*100 }))
+      .sort((a,b) => b.bps - a.bps);
+    const totalBps = svcList.reduce((s,v)=>s+v.bps,0);
 
-  let linkRows;
-  if (Object.keys(linkMap).length > 0) {
-    // rawRowsから集計
-    linkRows = Object.values(linkMap)
-      .map(e => ({ linkId: e.linkId, bps: e.bpsSum / e.cnt, util: (e.bpsSum / e.cnt) / capBps * 100 }))
-      .sort((a, b) => b.util - a.util);
+    let body = '<div style="margin-bottom:10px;font-size:11px;color:var(--text-dim)">'
+      + '合計帯域: <b style="color:rgba(' + h.rgb + ',1)">' + fmtBps(totalBps) + '</b>　'
+      + '収容率: <b style="color:rgba(' + h.rgb + ',1)">' + h.util.toFixed(1) + '%</b>'
+      + '</div>';
+
+    if (svcList.length === 0) {
+      body += '<div style="color:var(--text-dim);text-align:center;padding:16px">データなし</div>';
+    } else {
+      body += '<div style="overflow-x:auto"><table style="width:100%;font-size:10px;border-collapse:collapse">'
+        + '<thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">'
+        + '<th style="text-align:left;padding:4px 6px">ネットワーク対地</th>'
+        + '<th style="text-align:right;padding:4px 6px">利用帯域</th>'
+        + '<th style="text-align:right;padding:4px 6px">収容率</th>'
+        + '</tr></thead><tbody>';
+      for (const svc of svcList) {
+        const c = svc.util >= thAlert ? '255,80,30' : svc.util >= thWarn ? '255,190,20' : '0,200,255';
+        body += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
+          + '<td style="padding:4px 6px;color:var(--cyan)">' + svc.ee + '</td>'
+          + '<td style="padding:4px 6px;text-align:right">' + fmtBps(svc.bps) + '</td>'
+          + '<td style="padding:4px 6px;text-align:right;font-weight:700;color:rgba(' + c + ',1)">' + svc.util.toFixed(1) + '%</td>'
+          + '</tr>';
+      }
+      body += '</tbody></table></div>';
+    }
+
+    document.getElementById('modal-body').innerHTML = body;
   } else {
-    // rawRowsにデータがない場合はbObj.waypointsから推定
-    linkRows = Object.entries(h.bObj.waypoints).map(([lid]) => ({
-      linkId: lid,
-      bps: h.bObj.avgBps,
-      util: h.util
-    }));
+    // ── 全体区間クリック: showRouteDetail にリダイレクト ─────────────
+    showRouteDetail(h.ee);
+    return;
   }
-
-  const alertRows = linkRows.filter(e => e.util >= thWarn);
-
-  document.getElementById('modal-title').textContent = `${h.ee} — ${fmtBucketLabel(slotBucket)}`;
-  document.getElementById('modal-body').innerHTML = `
-    <div style="margin-bottom:12px;font-size:12px;color:var(--text-dim)">
-      収容率: <span style="color:rgba(${h.rgb},1);font-weight:700">${h.util.toFixed(1)}%</span>　
-      平均帯域: <span style="color:var(--text)">${fmtBps(h.bObj.avgBps)}</span>
-    </div>
-    ${alertRows.length > 0 ? `<div style="font-size:11px;font-weight:700;color:var(--alert);margin-bottom:8px">⚠ 閾値超えリンク（${alertRows.length}件）</div>` : ''}
-    <div style="overflow-x:auto">
-    <table style="width:100%;font-size:10px;font-family:'Space Mono',monospace;border-collapse:collapse">
-      <thead>
-        <tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:4px 6px">リンクID</th>
-          <th style="text-align:right;padding:4px 6px">利用帯域</th>
-          <th style="text-align:right;padding:4px 6px">収容率</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${linkRows.map(e => {
-          const color = e.util >= thAlert ? '255,80,30' : e.util >= thWarn ? '255,190,20' : '0,200,255';
-          return '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">'
-            + '<td style="padding:4px 6px;color:var(--cyan)">' + e.linkId + '</td>'
-            + '<td style="padding:4px 6px;text-align:right;color:var(--text)">' + fmtBps(e.bps) + '</td>'
-            + '<td style="padding:4px 6px;text-align:right;font-weight:700;color:rgba(' + color + ',1)">' + e.util.toFixed(1) + '%</td>'
-            + '</tr>';
-        }).join('')}
-      </tbody>
-    </table></div>`;
   document.getElementById('modal-overlay').classList.add('open');
 }
 function closeModal(e) {
@@ -2347,83 +2499,6 @@ function closeModal(e) {
 // ══════════════════════════════════════════════════════
 // TIMELINE CANVAS
 // ══════════════════════════════════════════════════════
-function drawTimeline(data, thWarn, thAlert) {
-  const canvas = document.getElementById('timeline-canvas');
-  if (!canvas || !data) return;
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = canvas.offsetWidth * dpr;
-  canvas.height = 180 * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  const W=canvas.offsetWidth, H=180;
-  const PAD={t:14,r:16,b:34,l:50};
-  const cw=W-PAD.l-PAD.r, ch=H-PAD.t-PAD.b;
-
-  ctx.fillStyle='#0a0e1a'; ctx.fillRect(0,0,W,H);
-
-  const vals = data.map(d=>d.util);
-  const maxV = Math.max(100, Math.max(...vals));
-  const n = data.length;
-  if (n < 2) return;
-
-  ctx.strokeStyle='#1e2d4a'; ctx.lineWidth=0.5;
-  for (let v=0; v<=maxV; v+=20) {
-    const y=PAD.t+ch-(v/maxV)*ch;
-    ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cw,y); ctx.stroke();
-    ctx.fillStyle='#4a5570'; ctx.font=`10px 'Space Mono'`;
-    ctx.fillText(v+'%',PAD.l-38,y+4);
-  }
-
-  function thLine(pct,color,label){
-    const y=PAD.t+ch-(pct/maxV)*ch;
-    ctx.save(); ctx.setLineDash([4,4]);
-    ctx.strokeStyle=color; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cw,y); ctx.stroke();
-    ctx.fillStyle=color; ctx.font=`10px 'Inter'`;
-    ctx.fillText(label,PAD.l+cw-52,y-3);
-    ctx.restore();
-  }
-  thLine(thWarn,'#ffc832','警告 '+thWarn+'%');
-  thLine(thAlert,'#ff6b35','危険 '+thAlert+'%');
-
-  const grad=ctx.createLinearGradient(0,PAD.t,0,PAD.t+ch);
-  grad.addColorStop(0,'rgba(0,212,255,0.28)'); grad.addColorStop(1,'rgba(0,212,255,0.01)');
-  ctx.beginPath();
-  data.forEach((d,i)=>{
-    const x=PAD.l+(i/(n-1))*cw, y=PAD.t+ch-(d.util/maxV)*ch;
-    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-  });
-  ctx.lineTo(PAD.l+cw,PAD.t+ch); ctx.lineTo(PAD.l,PAD.t+ch); ctx.closePath();
-  ctx.fillStyle=grad; ctx.fill();
-
-  ctx.beginPath();
-  data.forEach((d,i)=>{
-    const x=PAD.l+(i/(n-1))*cw, y=PAD.t+ch-(d.util/maxV)*ch;
-    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-  });
-  ctx.strokeStyle='#00d4ff'; ctx.lineWidth=2; ctx.setLineDash([]); ctx.stroke();
-
-  data.forEach((d,i)=>{
-    if(d.util<thWarn) return;
-    const x=PAD.l+(i/(n-1))*cw, y=PAD.t+ch-(d.util/maxV)*ch;
-    const col=d.util>=thAlert?'#ff6b35':'#ffc832';
-    ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2);
-    ctx.fillStyle=col; ctx.fill();
-    ctx.strokeStyle='#0a0e1a'; ctx.lineWidth=1.2; ctx.stroke();
-  });
-
-  const step=Math.max(1,Math.floor(n/8));
-  ctx.fillStyle='#4a5570'; ctx.font=`9px 'Space Mono'`; ctx.textAlign='center';
-  data.forEach((d,i)=>{
-    if(i%step!==0&&i!==n-1) return;
-    const x=PAD.l+(i/(n-1))*cw;
-    const dd=new Date(d.bucket*1000);
-    const lbl=`${String(dd.getUTCHours()).padStart(2,'0')}:${String(dd.getUTCMinutes()).padStart(2,'0')}`;
-    ctx.fillText(lbl,x,H-PAD.b+13);
-  });
-  ctx.textAlign='left';
-}
-
 // ══════════════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════════════
@@ -2443,8 +2518,6 @@ window.addEventListener('resize',()=>{
   const slider=document.getElementById('time-slider');
   drawWorldMap(analysisResult, analysisResult.allBuckets[+slider.value]);
   const sel=document.getElementById('ee-select');
-  if(sel) drawTimeline(analysisResult.eeStats[sel.value].buckets,
-    analysisResult.thWarn, analysisResult.thAlert);
 });
 
 // ══════════════════════════════════════════════════════
