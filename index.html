@@ -252,7 +252,7 @@ canvas{display:block;width:100%;}
       <div class="info-wrap"><div class="section-label">リンク容量設定</div><span class="info-btn" tabindex="0" data-tip="全リンクに共通の回線容量（Mbps）を設定します。収容率はこの値に対する使用帯域の割合で計算されます。">i</span></div>
       <label>回線容量</label>
       <div class="cap-unit">
-        <input type="number" id="link-capacity-mbps" value="10" min="0.001" step="any">
+        <input type="number" id="link-capacity-mbps" value="10000" min="0.001" step="any">
         <span class="cap-unit-label">Mbps</span>
       </div>
     </div>
@@ -531,11 +531,15 @@ function runAnalysis() {
   const segStats = {};
   for (const [segKey, bmap] of Object.entries(segMap)) {
     segStats[segKey] = Object.entries(bmap).sort((a,b)=>+a[0]-+b[0]).map(([b, seg]) => {
-      const avg = seg.bpsArr.reduce((s,v)=>s+v,0) / seg.bpsArr.length;
+      // セグメント合計帯域 = 通過する全回線の平均帯域の合計
       const svcs = {};
+      let totalBpsForSeg = 0;
       for (const [ee2, v] of Object.entries(seg.services)) {
-        svcs[ee2] = typeof v === 'object' ? v.sum / v.cnt : v;
+        const avgBpsForEe = typeof v === 'object' ? v.sum / v.cnt : v;
+        svcs[ee2] = avgBpsForEe;
+        totalBpsForSeg += avgBpsForEe;
       }
+      const avg = totalBpsForSeg; // セグメント合計帯域
       return { bucket:+b, avgBps:avg, util:avg/capBps*100,
                latA:seg.latA, lonA:seg.lonA, latB:seg.latB, lonB:seg.lonB,
                nodeA:seg.nodeA, nodeB:seg.nodeB, services:svcs };
@@ -1159,14 +1163,23 @@ function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
     ctx.strokeStyle='rgba(20,20,20,0.7)'; ctx.lineWidth=1.5; ctx.stroke();
   }
 
-  // % labels
-  const fszPct=Math.max(12,Math.min(15,W/70));
-  ctx.font=`bold ${fszPct}px 'Space Mono'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
-  for(const{mx,my,util,rgb}of hitAreas){
+  // 収容率ラベル（警告・危険のみ・重複排除）
+  const fszPct=Math.max(9,Math.min(10,W/110));
+  ctx.font=`${fszPct}px 'Space Mono'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
+  const drawnPct3D=[];
+  for(const h of hitAreas){
+    if(!h.isSeg) continue; // セグメント単位のみ
+    const{mx,my,util,rgb,midVis}=h;
+    const px3=midVis?midVis.px:mx, py3=midVis?midVis.py:my;
+    if(!isFinite(px3)||!isFinite(py3)) continue;
+    if(util < (analysisResult?analysisResult.thWarn:70)) continue;
+    const dup3=drawnPct3D.find(d=>Math.hypot(d.x-px3,d.y-py3)<30);
+    if(dup3) continue;
+    drawnPct3D.push({x:px3,y:py3});
     const lbl=`${util.toFixed(0)}%`, tw=ctx.measureText(lbl).width;
-    ctx.fillStyle='rgba(10,10,20,0.78)';
-    ctx.beginPath(); ctx.roundRect(mx-tw/2-5,my-fszPct-12,tw+10,fszPct+8,4); ctx.fill();
-    ctx.fillStyle=`rgba(${rgb},1)`; ctx.fillText(lbl,mx,my-5);
+    ctx.fillStyle='rgba(5,8,20,0.5)';
+    safeRoundRect(ctx, px3-tw/2-3,py3-fszPct-6,tw+6,fszPct+4,2); ctx.fill();
+    ctx.fillStyle=`rgba(${rgb},0.9)`; ctx.fillText(lbl,px3,py3-2);
   }
   ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   ctx.restore();
@@ -1242,6 +1255,39 @@ function mapZoom(dir) {
 }
 
 
+const MAJOR_CITIES = new Set([
+  'TYO','SGP','DEL','DXB','LON','PAR','NYC','LAX','SYD','GRU','JNB',
+  '東京','シンガポール','デリー','ドバイ','ロンドン','パリ',
+  'ニューヨーク','ロサンゼルス','シドニー','サンパウロ','ヨハネスブルク'
+]);
+const CITY_NAME_MAP = {
+  'TYO':'東京','SGP':'シンガポール','DEL':'デリー','DXB':'ドバイ',
+  'LON':'ロンドン','PAR':'パリ','NYC':'ニューヨーク','LAX':'ロサンゼルス',
+  'SYD':'シドニー','GRU':'サンパウロ','JNB':'ヨハネスブルク'
+};
+function cityDisplayName(code) {
+  if (!code) return null;
+  if (CITY_NAME_MAP[code]) return CITY_NAME_MAP[code];
+  // 日本語名が直接入っている場合
+  if (MAJOR_CITIES.has(code)) return code;
+  return null;
+}
+
+// roundRect polyfill for Safari compatibility
+function safeRoundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
 // ── Globe rotation state ──────────────────────────────────────────────────
 let globeLon = 140; // center longitude (deg)
 let globeLat =  30; // center latitude  (deg)
@@ -1594,13 +1640,11 @@ function drawMercatorCanvas(res, activeBucket) {
       const baseRaw  = wpts[0][1].lon; // 始点ウェイポイントの実経度
       wpts.forEach(([lid,wp],i)=>{
         const isEnd=i===0||i===wpts.length-1;
-        let label;
-        if (isEnd) {
-          label = i===0 ? cityFrom : cityTo;
-        } else {
-          // wp.name(新フォーマット) → lid が都市コード単体 → linkID末尾
-          label = wp.name || lid || null;
-        }
+        // 主要都市のみ日本語名でラベル
+        const _code = wp.name || lid || '';
+        const label = isEnd
+          ? cityDisplayName(_code) || cityDisplayName(i===0 ? cityFrom : cityTo)
+          : cityDisplayName(_code);
         // wp.lon を baseNorm 基準で連続正規化
         let diff = wp.lon - baseRaw;
         while(diff >  180) diff -= 360;
@@ -1637,14 +1681,18 @@ function drawMercatorCanvas(res, activeBucket) {
       ctx.strokeStyle='rgba(5,12,28,0.7)';ctx.lineWidth=1;ctx.stroke();
     }
   }
-  // ── 収容率ラベル ──
-  const fszPct=Math.max(11,Math.min(14,W/75));
-  ctx.font=`bold ${fszPct}px 'Space Mono'`;ctx.textAlign='center';ctx.textBaseline='bottom';
-  for(const{mx,my,util,rgb}of hitAreas){
+  // ── 収容率ラベル（警告・危険のみ・コンパクト）──
+  const fszPct=Math.max(9,Math.min(10,W/100));
+  ctx.font=`${fszPct}px 'Space Mono'`;ctx.textAlign='center';ctx.textBaseline='bottom';
+  for(const h of hitAreas){
+    if(!h.isSeg) continue; // セグメント単位のみ
+    const{mx,my,util,rgb}=h;
+    if(!isFinite(mx)||!isFinite(my)) continue;
+    if(util < thWarn) continue;
     const lbl=`${util.toFixed(0)}%`,tw=ctx.measureText(lbl).width;
-    ctx.fillStyle='rgba(5,10,22,0.75)';
-    ctx.beginPath();ctx.roundRect(mx-tw/2-4,my-fszPct-10,tw+8,fszPct+6,3);ctx.fill();
-    ctx.fillStyle=`rgba(${rgb},1)`;ctx.fillText(lbl,mx,my-4);
+    ctx.fillStyle='rgba(5,10,22,0.50)';
+    safeRoundRect(ctx, mx-tw/2-3,my-fszPct-7,tw+6,fszPct+4,2);ctx.fill();
+    ctx.fillStyle=`rgba(${rgb},0.85)`;ctx.fillText(lbl,mx,my-3);
   }
   // ── 都市名ラベル（全ノード、重複排除・端点は下・中継点は上）──
   const fszCity=Math.max(11,Math.min(13,W/80));
@@ -1653,6 +1701,8 @@ function drawMercatorCanvas(res, activeBucket) {
   const drawnLabels=[];
   for(const{nx,ny,isEnd,label,rgb}of mercNodes){
     if(!label||!isFinite(nx)||!isFinite(ny)) continue;
+    // 主要都市のみ表示
+    if(!MAJOR_CITIES.has(label)) continue;
     // 同じラベルが近くに既に描かれていればスキップ
     const dup = drawnLabels.find(d=>d.label===label && Math.hypot(d.nx-nx,d.ny-ny)<30);
     if(dup) continue;
@@ -1661,9 +1711,9 @@ function drawMercatorCanvas(res, activeBucket) {
     const bx=nx-tw/2-pad;
     const by=isEnd ? ny+10 : ny-fszCity-14;
     ctx.fillStyle='rgba(5,12,28,0.88)';
-    ctx.beginPath();ctx.roundRect(bx,by,tw+pad*2,fszCity+6,3);ctx.fill();
+    safeRoundRect(ctx, bx,by,tw+pad*2,fszCity+6,3);ctx.fill();
     ctx.strokeStyle=`rgba(${rgb},0.4)`;ctx.lineWidth=0.8;
-    ctx.beginPath();ctx.roundRect(bx,by,tw+pad*2,fszCity+6,3);ctx.stroke();
+    safeRoundRect(ctx, bx,by,tw+pad*2,fszCity+6,3);ctx.stroke();
     ctx.fillStyle=`rgba(${rgb},1)`;ctx.fillText(label,nx,by+3);
   }
   const fsz=Math.max(9,Math.min(11,W/100));
@@ -1671,7 +1721,7 @@ function drawMercatorCanvas(res, activeBucket) {
   for(const lbl of edgeLabels){
     ctx.textAlign=lbl.align;const x=lbl.align==='right'?W-10:10;
     const tw=ctx.measureText(lbl.text).width,pad=4;const bx=lbl.align==='right'?x-tw-pad:x-pad;
-    ctx.fillStyle='rgba(9,14,26,0.88)';ctx.beginPath();ctx.roundRect(bx,lbl.y-fsz/2-pad,tw+pad*2,fsz+pad*2,3);ctx.fill();
+    ctx.fillStyle='rgba(9,14,26,0.88)';safeRoundRect(ctx, bx,lbl.y-fsz/2-pad,tw+pad*2,fsz+pad*2,3);ctx.fill();
     ctx.fillStyle=`rgba(${lbl.rgb},1)`;ctx.fillText(lbl.text,x,lbl.y);
   }
   ctx.textAlign='left';ctx.textBaseline='alphabetic';ctx.restore();
@@ -1883,8 +1933,10 @@ function drawGlobe(res, activeBucket) {
     const cityTo   = eeParts[1]?.trim()||ee;
     const pF = orthoProject(first.lon,first.lat,globeLon,globeLat,cx,cy,R);
     const pL = orthoProject(last.lon, last.lat, globeLon,globeLat,cx,cy,R);
-    if (pF.visible) cityLabels.push({p:pF, label:cityFrom, rgb});
-    if (pL.visible) cityLabels.push({p:pL, label:cityTo,   rgb});
+    const _lF = cityDisplayName(wpts[0][1]?.name || wpts[0][0]) || cityDisplayName(cityFrom);
+    const _lL = cityDisplayName(wpts[wpts.length-1][1]?.name || wpts[wpts.length-1][0]) || cityDisplayName(cityTo);
+    if (pF.visible && _lF) cityLabels.push({p:pF, label:_lF, rgb});
+    if (pL.visible && _lL) cityLabels.push({p:pL, label:_lL, rgb});
 
     // ── セグメント単位 hitAreas（2Dと同仕様）──────────────────────────
     if (analysisResult && analysisResult.segStats) {
@@ -1920,11 +1972,13 @@ function drawGlobe(res, activeBucket) {
       const p = orthoProject(wp.lon,wp.lat,globeLon,globeLat,cx,cy,R);
       if (!p.visible) return;
       const isEnd = i===0||i===wpts.length-1;
-      nodeList.push({p, isEnd, rgb});
+      const _nc = wp.name || lid || '';
+      nodeList.push({p, isEnd, rgb, label: cityDisplayName(_nc)});
       // 中継点ラベル: wp.name 優先
       if (!isEnd) {
         const midLabel = wp.name || (lid.split('-').pop()) || '';
-        if (midLabel) cityLabels.push({p, label: midLabel, rgb});
+        const _midDisp = cityDisplayName(midLabel);
+        if (_midDisp) cityLabels.push({p, label: _midDisp, rgb});
       }
     });
   }
@@ -1943,23 +1997,21 @@ function drawGlobe(res, activeBucket) {
       ctx.beginPath(); ctx.arc(p.px,p.py,3,0,Math.PI*2);
       ctx.fillStyle=`rgba(${rgb},1)`; ctx.fill();
     } else {
-      const s=5;
-      ctx.beginPath();
-      ctx.moveTo(p.px,p.py-s); ctx.lineTo(p.px+s,p.py);
-      ctx.lineTo(p.px,p.py+s); ctx.lineTo(p.px-s,p.py); ctx.closePath();
-      ctx.fillStyle='rgba(200,220,255,0.85)'; ctx.fill();
-      ctx.strokeStyle='rgba(5,12,28,0.7)'; ctx.lineWidth=1; ctx.stroke();
+      // 主要都市 or 非主要で見た目を変える
+      if (p.label) {
+        const s=5;
+        ctx.beginPath();
+        ctx.moveTo(p.px,p.py-s); ctx.lineTo(p.px+s,p.py);
+        ctx.lineTo(p.px,p.py+s); ctx.lineTo(p.px-s,p.py); ctx.closePath();
+        ctx.fillStyle='rgba(200,220,255,0.85)'; ctx.fill();
+        ctx.strokeStyle='rgba(5,12,28,0.7)'; ctx.lineWidth=1; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(p.px,p.py,2.5,0,Math.PI*2);
+        ctx.fillStyle='rgba(150,180,220,0.4)'; ctx.fill();
+      }
     }
   }
 
-  // ── Draw midpoint % labels ─────────────────────────────────────────────
-  const fszM = Math.max(9,Math.min(12,W/80));
-  ctx.font=`bold ${fszM}px 'Space Mono'`; ctx.textAlign='center'; ctx.textBaseline='bottom';
-  for (const h of hitAreas) {
-    if (!h.midVis) continue;
-    ctx.fillStyle=`rgba(${h.rgb},1)`;
-    ctx.fillText(`${h.util.toFixed(0)}%`, h.midVis.px, h.midVis.py-5);
-  }
 
   // ── Draw city labels last (always on top) ─────────────────────────────
   const fszC = Math.max(9,Math.min(11,W/95));
@@ -1968,9 +2020,9 @@ function drawGlobe(res, activeBucket) {
     const tw=ctx.measureText(label).width, pad=4;
     const lx=p.px, ly=p.py+10;
     ctx.fillStyle='rgba(5,12,28,0.88)';
-    ctx.beginPath(); ctx.roundRect(lx-tw/2-pad,ly,tw+pad*2,fszC+6,3); ctx.fill();
+    safeRoundRect(ctx, lx-tw/2-pad,ly,tw+pad*2,fszC+6,3); ctx.fill();
     ctx.strokeStyle=`rgba(${rgb},0.4)`; ctx.lineWidth=0.8;
-    ctx.beginPath(); ctx.roundRect(lx-tw/2-pad,ly,tw+pad*2,fszC+6,3); ctx.stroke();
+    safeRoundRect(ctx, lx-tw/2-pad,ly,tw+pad*2,fszC+6,3); ctx.stroke();
     ctx.fillStyle=`rgba(${rgb},1)`; ctx.fillText(label,lx,ly+3);
   }
 
