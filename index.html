@@ -113,7 +113,7 @@ canvas{display:block;width:100%;}
 .empty-title{font-family:'Space Mono',monospace;font-size:13px;color:var(--muted);}
 
 /* Map */
-#map-container{width:100%;position:relative;background:#050810;overflow:auto;min-height:480px;}
+#map-container{width:100%;position:relative;background:#050810;overflow:scroll;min-height:480px;max-height:600px;scrollbar-width:thin;scrollbar-color:rgba(0,212,255,0.3) var(--bg-deep);}
 #leaflet-map{width:100%;height:500px;min-height:400px;}
 #leaflet-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1000;}#map-container.globe-mode{touch-action:none;cursor:grab;}#map-container.globe-mode.dragging{cursor:grabbing;}
 #world-canvas{display:block;}
@@ -266,7 +266,7 @@ canvas{display:block;width:100%;}
     </div>
 
     <div class="sidebar-section">
-      <button class="btn-run" onclick="runAnalysis()">▶ 実行</button>
+      <button class="btn-run" onclick="runAnalysis()">▶ 分析実行</button>
     </div>
   </aside>
 
@@ -489,15 +489,46 @@ function runAnalysis() {
       const segKey = r.nodeA + '-' + r.nodeB;
       if (!segMap[segKey]) segMap[segKey] = {};
       if (!segMap[segKey][bucket]) segMap[segKey][bucket] = {
-        bpsArr: [], latA: r.lat, lonA: r.lon, latB: r.latB, lonB: r.lonB,
-        nodeA: r.nodeA, nodeB: r.nodeB, services: {}
+        // slotTotals: タイムスロット(ts)ごとの全回線合計bps
+        slotTotals: {}, latA: r.lat, lonA: r.lon, latB: r.latB, lonB: r.lonB,
+        nodeA: r.nodeA, nodeB: r.nodeB,
+        // services: ee→{slotBps: {ts→bps}} 各回線の各スロット帯域
+        services: {}
       };
       const seg = segMap[segKey][bucket];
-      seg.bpsArr.push(r.bps);
-      if (!seg.services[r.ee]) seg.services[r.ee] = {sum:0,cnt:0};
-      seg.services[r.ee].sum += r.bps;
-      seg.services[r.ee].cnt++;
+      // スロット単位の合計
+      if (!seg.slotTotals[r.ts]) seg.slotTotals[r.ts] = 0;
+      seg.slotTotals[r.ts] += r.bps;
+      // 回線ごとのスロット帯域
+      if (!seg.services[r.ee]) seg.services[r.ee] = {};
+      seg.services[r.ee][r.ts] = (seg.services[r.ee][r.ts] || 0) + r.bps;
     }
+  }
+
+  // --- セグメント統計を先に計算（ee収容率の参照元）
+  const segStats = {};
+  for (const [segKey, bmap] of Object.entries(segMap)) {
+    segStats[segKey] = Object.entries(bmap).sort((a,b)=>+a[0]-+b[0]).map(([b, seg]) => {
+      const slotVals = Object.values(seg.slotTotals);
+      const avg = slotVals.length > 0
+        ? slotVals.reduce((s,v)=>s+v,0) / slotVals.length : 0;
+      const svcs = {};
+      for (const [ee2, slotMap] of Object.entries(seg.services)) {
+        const eeVals = Object.values(slotMap);
+        svcs[ee2] = eeVals.length > 0
+          ? eeVals.reduce((s,v)=>s+v,0) / eeVals.length : 0;
+      }
+      return { bucket:+b, avgBps:avg, util:avg/capBps*100,
+               latA:seg.latA, lonA:seg.lonA, latB:seg.latB, lonB:seg.lonB,
+               nodeA:seg.nodeA, nodeB:seg.nodeB, services:svcs };
+    });
+  }
+
+  // セグメントキー→収容率のバケットマップ（ee収容率計算用）
+  function getSegUtil(segKey, bucket) {
+    const sd = segStats[segKey];
+    if (!sd || !sd.length) return null;
+    return sd.reduce((p,c)=>Math.abs(c.bucket-bucket)<Math.abs(p.bucket-bucket)?c:p).util;
   }
 
   // --- per-ee stats
@@ -509,7 +540,19 @@ function runAnalysis() {
         ? slot.wpOrder : Object.keys(slot.waypoints);
       const orderedWpts = {};
       for (const k of order) { if (slot.waypoints[k]) orderedWpts[k] = slot.waypoints[k]; }
-      return { bucket:+b, avgBps:avg, util:avg/capBps*100, waypoints:orderedWpts };
+      // 収容率: このeeが通る全セグメントの最大収容率
+      const wpArr = order.map(k=>slot.waypoints[k]).filter(Boolean);
+      let maxSegUtil = 0;
+      for (let si=0; si<wpArr.length-1; si++) {
+        const a=wpArr[si], bw=wpArr[si+1];
+        if (!a||!bw) continue;
+        const sk=(a.name||order[si])+'-'+(bw.name||order[si+1]);
+        const su = getSegUtil(sk, +b);
+        if (su !== null && su > maxSegUtil) maxSegUtil = su;
+      }
+      // セグメント情報がない場合は回線帯域ベースで計算
+      const util = maxSegUtil > 0 ? maxSegUtil : avg/capBps*100;
+      return { bucket:+b, avgBps:avg, util, waypoints:orderedWpts };
     });
     const utils = buckets.map(x=>x.util);
     eeStats[ee] = {
@@ -527,24 +570,7 @@ function runAnalysis() {
     Object.values(eeStats).flatMap(s=>s.buckets.map(b=>b.bucket))
   )].sort((a,b)=>a-b);
 
-  // セグメント統計を生成
-  const segStats = {};
-  for (const [segKey, bmap] of Object.entries(segMap)) {
-    segStats[segKey] = Object.entries(bmap).sort((a,b)=>+a[0]-+b[0]).map(([b, seg]) => {
-      // セグメント合計帯域 = 通過する全回線の平均帯域の合計
-      const svcs = {};
-      let totalBpsForSeg = 0;
-      for (const [ee2, v] of Object.entries(seg.services)) {
-        const avgBpsForEe = typeof v === 'object' ? v.sum / v.cnt : v;
-        svcs[ee2] = avgBpsForEe;
-        totalBpsForSeg += avgBpsForEe;
-      }
-      const avg = totalBpsForSeg; // セグメント合計帯域
-      return { bucket:+b, avgBps:avg, util:avg/capBps*100,
-               latA:seg.latA, lonA:seg.lonA, latB:seg.latB, lonB:seg.lonB,
-               nodeA:seg.nodeA, nodeB:seg.nodeB, services:svcs };
-    });
-  }
+  // segStats already computed above
   analysisResult = { eeStats, allBuckets, capBps, thWarn, thAlert, filtered, bucketSec: aggSec, segStats };
 
   // renderResults先にDOMを生成（スライダーはその中で作られる）
@@ -645,6 +671,7 @@ function renderResults(res) {
 
   // 展開ボタン用データを保持
   window._hiddenEes = hiddenEes;
+  window._visibleEes = visibleEes;
   window._buildSummaryRows = buildSummaryRows;
 
   // route-row クリック登録
@@ -682,7 +709,7 @@ function renderResults(res) {
       <div id="leaflet-map" style="display:none;"></div>
       <canvas id="globe-canvas" style="display:none;position:relative;width:100%;cursor:grab;touch-action:none;"></canvas>
       <canvas id="globe-arc-canvas" style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
-      <canvas id="world-canvas" style="display:none;position:absolute;top:0;left:0;z-index:2;cursor:default;pointer-events:auto;"></canvas>
+      <canvas id="world-canvas" style="display:none;position:relative;top:0;left:0;z-index:2;cursor:default;pointer-events:auto;"></canvas>
       <canvas id="leaflet-overlay" style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
       <canvas id="globe-overlay"   style="display:none;position:absolute;top:0;left:0;pointer-events:none;z-index:500;"></canvas>
     </div>
@@ -1073,7 +1100,7 @@ function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
     else                     rgb = '0,180,255';
 
     const maxBps = Math.max(...Object.values(eeStats).map(s=>s.avgBps));
-    const thick  = 2.0 + (bObj.avgBps/maxBps)*5;
+    const thick  = 1.0 + (bObj.avgBps/maxBps)*2.5;
 
     const [,first] = wpts[0], [,last] = wpts[wpts.length-1];
     // 各ウェイポイント間を順番につないだ大圏弧
@@ -1390,11 +1417,15 @@ function drawLeaflet(res, activeBucket) {
   cancelAnimationFrame(animFrameId);
   cancelAnimationFrame(leafletAnimId);
 
-  // leaflet-map を非表示にして Canvas版で描画
   const lmd = document.getElementById('leaflet-map');
   if (lmd) lmd.style.display = 'none';
 
-  drawMercatorCanvas(res, activeBucket);
+  // アニメーションループ開始
+  function loop() {
+    drawMercatorCanvas(res, activeBucket);
+    animFrameId = requestAnimationFrame(loop);
+  }
+  loop();
 }
 
 
@@ -1408,6 +1439,7 @@ function drawMercatorCanvas(res, activeBucket) {
     _wc.style.position = 'relative';
     _wc.style.top = '0';
     _wc.style.left = '0';
+    _wc.style.cursor = 'default';
   }
 
   cancelAnimationFrame(animFrameId);
@@ -1496,7 +1528,7 @@ function drawMercatorCanvas(res, activeBucket) {
     const util=bObj.util, wpts=Object.entries(bObj.waypoints);
     if (wpts.length<2) continue;
     const maxBps=Math.max(...Object.values(eeStats).map(s=>s.avgBps));
-    const thick=1.8+(bObj.avgBps/maxBps)*5;
+    const thick = 1.5 + Math.sqrt(bObj.avgBps/maxBps) * 2.5; // 1.5〜4.0px
     const [,first]=wpts[0],[,last]=wpts[wpts.length-1];
     const eeParts=ee.split(/[〜～\-–—]/);
     const cityFrom=eeParts[0]?.trim()||ee, cityTo=eeParts[1]?.trim()||ee;
@@ -1555,6 +1587,10 @@ function drawMercatorCanvas(res, activeBucket) {
     // 収容率から単色を決定
     const rgb = util>=thAlert?'255,107,53':util>=thWarn?'255,200,50':'0,212,255';
 
+    // このeeが通る全セグメントの最大収容率から線の太さを決定
+    // 収容率0%→1.5px, 収容率100%以上→5px（線形スケール）
+    let drawThick = 1.5 + Math.min(util / 100, 1.5) * 2.5;
+
     segs.forEach((segPts,si)=>{
       const sp = segPts.map(([lo,la])=>merc(lo,la));
       allScreenPts.push(...sp);
@@ -1563,28 +1599,32 @@ function drawMercatorCanvas(res, activeBucket) {
 
       // グロー
       ctx.beginPath(); sp.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
-      ctx.strokeStyle=`rgba(${rgb},0.07)`; ctx.lineWidth=thick*6;
+      ctx.strokeStyle=`rgba(${rgb},0.06)`; ctx.lineWidth=drawThick*4;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
 
       ctx.beginPath(); sp.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
-      ctx.strokeStyle=`rgba(${rgb},0.18)`; ctx.lineWidth=thick*2.5;
+      ctx.strokeStyle=`rgba(${rgb},0.15)`; ctx.lineWidth=drawThick*1.8;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
 
       // 本線
       ctx.beginPath(); sp.forEach(([x,y],i)=>i===0?ctx.moveTo(x,y):ctx.lineTo(x,y));
-      ctx.strokeStyle=`rgba(${rgb},0.92)`; ctx.lineWidth=thick;
+      ctx.strokeStyle=`rgba(${rgb},0.92)`; ctx.lineWidth=drawThick;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
 
-      // 流れるドット
-      const t2=(Date.now()/2000)%1;
+      // 流れるドット（帯域に応じた速度・サイズ）
+      const speed = 1500 + (1 - bObj.avgBps/maxBps) * 1500; // 高帯域ほど速い
+      const t2=(Date.now()/speed)%1;
+      const dotR = drawThick * 1.2 + 1;
       for(let k=0;k<3;k++){
         const ti=(t2+k/3)%1, pidx=Math.floor(ti*(n-1));
         const[dx,dy]=sp[Math.max(0,pidx)];
         if(!isFinite(dx)||!isFinite(dy)) continue;
-        const dg=ctx.createRadialGradient(dx,dy,0,dx,dy,5);
-        dg.addColorStop(0,`rgba(${rgb},0.9)`); dg.addColorStop(1,`rgba(${rgb},0)`);
-        ctx.beginPath(); ctx.arc(dx,dy,5,0,Math.PI*2); ctx.fillStyle=dg; ctx.fill();
-        ctx.beginPath(); ctx.arc(dx,dy,2,0,Math.PI*2);
+        // グロー
+        const dg=ctx.createRadialGradient(dx,dy,0,dx,dy,dotR*2.5);
+        dg.addColorStop(0,`rgba(${rgb},0.85)`); dg.addColorStop(1,`rgba(${rgb},0)`);
+        ctx.beginPath(); ctx.arc(dx,dy,dotR*2.5,0,Math.PI*2); ctx.fillStyle=dg; ctx.fill();
+        // 白い中心点
+        ctx.beginPath(); ctx.arc(dx,dy,dotR*0.7,0,Math.PI*2);
         ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fill();
       }
 
@@ -1681,19 +1721,6 @@ function drawMercatorCanvas(res, activeBucket) {
       ctx.strokeStyle='rgba(5,12,28,0.7)';ctx.lineWidth=1;ctx.stroke();
     }
   }
-  // ── 収容率ラベル（警告・危険のみ・コンパクト）──
-  const fszPct=Math.max(9,Math.min(10,W/100));
-  ctx.font=`${fszPct}px 'Space Mono'`;ctx.textAlign='center';ctx.textBaseline='bottom';
-  for(const h of hitAreas){
-    if(!h.isSeg) continue; // セグメント単位のみ
-    const{mx,my,util,rgb}=h;
-    if(!isFinite(mx)||!isFinite(my)) continue;
-    if(util < thWarn) continue;
-    const lbl=`${util.toFixed(0)}%`,tw=ctx.measureText(lbl).width;
-    ctx.fillStyle='rgba(5,10,22,0.50)';
-    safeRoundRect(ctx, mx-tw/2-3,my-fszPct-7,tw+6,fszPct+4,2);ctx.fill();
-    ctx.fillStyle=`rgba(${rgb},0.85)`;ctx.fillText(lbl,mx,my-3);
-  }
   // ── 都市名ラベル（全ノード、重複排除・端点は下・中継点は上）──
   const fszCity=Math.max(11,Math.min(13,W/80));
   ctx.font=`bold ${fszCity}px 'Inter'`;ctx.textAlign='center';ctx.textBaseline='top';
@@ -1769,6 +1796,7 @@ function drawGlobe(res, activeBucket) {
     _wc._hoverInit = false;
     _wc.style.display = 'block';
     _wc.style.position = 'relative';
+    _wc.style.cursor = 'grab';
   }
   initGlobeDrag();
   const mc2 = document.getElementById('map-container'); if(mc2){mc2.classList.add('globe-mode');}
@@ -1876,7 +1904,7 @@ function drawGlobe(res, activeBucket) {
     const rgb = util>=thAlert?'255,107,53':util>=thWarn?'255,200,50':'0,212,255';
 
     const maxBps = Math.max(...Object.values(eeStats).map(s=>s.avgBps));
-    const thick  = 1.5 + (bObj.avgBps/maxBps)*4.5;
+    const thick  = 1.5 + Math.sqrt(bObj.avgBps/maxBps) * 2.5; // 1.5〜4.0px
     const [,first] = wpts[0];
     const [,last]  = wpts[wpts.length-1];
     // 各ウェイポイント間を順番につないだ大圏弧
@@ -1898,28 +1926,35 @@ function drawGlobe(res, activeBucket) {
     }
     if (curSeg.length>1) subSegs.push(curSeg);
 
+    // 収容率から線の太さを決定
+    let draw3DThick = 1.5 + Math.min(util / 100, 1.5) * 2.5;
     for (const sp of subSegs) {
       const n = sp.length; if (n < 2) continue;
       // グロー
       ctx.beginPath();
       sp.forEach((p,i) => i===0?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py));
-      ctx.strokeStyle=`rgba(${rgb},0.1)`; ctx.lineWidth=thick*4;
+      ctx.strokeStyle=`rgba(${rgb},0.1)`; ctx.lineWidth=draw3DThick*3.5;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
       // 本線
       ctx.beginPath();
       sp.forEach((p,i) => i===0?ctx.moveTo(p.px,p.py):ctx.lineTo(p.px,p.py));
-      ctx.strokeStyle=`rgba(${rgb},0.9)`; ctx.lineWidth=thick;
+      ctx.strokeStyle=`rgba(${rgb},0.9)`; ctx.lineWidth=draw3DThick;
       ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
     }
-    // 流れるドット
+    // 流れるドット（帯域に応じた速度）
     const allVis = proj.filter(p=>p.visible);
     if (allVis.length > 1) {
-      const t = (Date.now()/2000)%1;
+      const speed3d = 1500 + (1 - bObj.avgBps/maxBps) * 1500;
+      const t = (Date.now()/speed3d)%1;
+      const dotR3 = draw3DThick * 1.0 + 1;
       for (let k=0;k<3;k++) {
         const ti=(t+k/3)%1, idx=Math.floor(ti*(allVis.length-1));
         const p=allVis[idx];
-        ctx.beginPath(); ctx.arc(p.px,p.py,3,0,Math.PI*2);
-        ctx.fillStyle=`rgba(${rgb},0.95)`; ctx.fill();
+        const dg3=ctx.createRadialGradient(p.px,p.py,0,p.px,p.py,dotR3*2);
+        dg3.addColorStop(0,`rgba(${rgb},0.9)`); dg3.addColorStop(1,`rgba(${rgb},0)`);
+        ctx.beginPath(); ctx.arc(p.px,p.py,dotR3*2,0,Math.PI*2); ctx.fillStyle=dg3; ctx.fill();
+        ctx.beginPath(); ctx.arc(p.px,p.py,dotR3*0.6,0,Math.PI*2);
+        ctx.fillStyle='rgba(255,255,255,0.95)'; ctx.fill();
       }
     }
 
@@ -2384,9 +2419,30 @@ function expandSummary() {
   const tbody = document.getElementById('summary-tbody');
   if (!tbody || !window._hiddenEes || !window._buildSummaryRows) return;
   tbody.innerHTML += window._buildSummaryRows(window._hiddenEes);
-  // 「…他N件」行を削除
   const more = document.getElementById('summary-more');
-  if (more) more.closest('tr').parentNode.removeChild(more.closest('tr'));
+  if (more) {
+    const tr = more.closest('tr');
+    tr.innerHTML = '<td colspan="4" style="text-align:center;padding:8px">'
+      + '<span onclick="collapseSummary()" '
+      + 'style="color:var(--cyan);cursor:pointer;font-size:12px">▲ 折りたたむ</span></td>';
+  }
+  window._bindSummaryRows && window._bindSummaryRows();
+}
+
+function collapseSummary() {
+  const tbody = document.getElementById('summary-tbody');
+  if (!tbody || !window._visibleEes || !window._buildSummaryRows) return;
+  tbody.innerHTML = window._buildSummaryRows(window._visibleEes);
+  // 「…他N件」行を復元
+  let moreRow = tbody.parentNode.querySelector('tbody:nth-of-type(2)');
+  if (!moreRow) {
+    moreRow = document.createElement('tbody');
+    tbody.parentNode.appendChild(moreRow);
+  }
+  moreRow.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:10px">'
+    + '<span id="summary-more" onclick="expandSummary()" '
+    + 'style="color:var(--cyan);cursor:pointer;font-size:12px">'
+    + '… 他 ' + window._hiddenEes.length + ' 件（クリックで展開）</span></td></tr>';
   window._bindSummaryRows && window._bindSummaryRows();
 }
 
