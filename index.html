@@ -6,7 +6,8 @@
 <title>Space Network Traffic Analyzer</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
-/* Leaflet removed */
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+/* Leaflet restored for realistic 2D imagery */
 :root {
   --bg-deep:#0a0e1a; --bg-panel:#0f1525; --bg-card:#141c30; --border:#1e2d4a;
   --cyan:#00d4ff; --cyan-dim:rgba(0,212,255,.15); --cyan-glow:rgba(0,212,255,.4);
@@ -45,7 +46,10 @@ header::after{content:'';position:absolute;inset:0;background:linear-gradient(90
 /* Drop zone */
 .drop-zone{border:1.5px dashed var(--border);border-radius:6px;padding:20px 14px;text-align:center;cursor:pointer;transition:all .2s;position:relative;}
 .drop-zone:hover,.drop-zone.drag-over{border-color:var(--cyan);background:var(--cyan-dim);}
-.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;}
+.drop-zone input[type=file]{position:static;opacity:1;cursor:pointer;width:100%;margin-top:10px;background:var(--bg-card);border:1px solid var(--cyan);border-radius:5px;color:var(--text);padding:9px;font-size:12px;-webkit-appearance:none;}
+.file-mobile-note{font-size:10px;color:var(--text-dim);line-height:1.6;margin-top:8px;}
+.mobile-paste-area{width:100%;min-height:88px;background:var(--bg-card);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'Space Mono',monospace;font-size:10px;padding:8px;margin-top:8px;resize:vertical;}
+.btn-mobile-load{width:100%;margin-top:6px;background:transparent;border:1px solid var(--cyan);border-radius:4px;color:var(--cyan);font-size:11px;padding:8px;cursor:pointer;font-family:'Inter',sans-serif;}
 .drop-icon{font-size:22px;margin-bottom:6px;}
 .drop-text{font-size:11px;color:var(--text-dim);line-height:1.5;}
 .drop-text em{color:var(--cyan);font-style:normal;}
@@ -114,7 +118,7 @@ canvas{display:block;width:100%;}
 
 /* Map */
 #map-container{width:100%;position:relative;background:#050810;overflow:scroll;min-height:480px;max-height:600px;scrollbar-width:thin;scrollbar-color:rgba(0,212,255,0.3) var(--bg-deep);}
-#leaflet-map{width:100%;height:500px;min-height:400px;}
+#leaflet-map{width:100%;height:540px;min-height:440px;background:#02060d;} .leaflet-container{background:#02060d;font-family:'Inter',sans-serif;} .leaflet-control-attribution{background:rgba(5,8,20,.72)!important;color:#8fa6c8!important;} .leaflet-control-attribution a{color:#00d4ff!important;}
 #leaflet-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1000;}#map-container.globe-mode{touch-action:none;cursor:grab;}#map-container.globe-mode.dragging{cursor:grabbing;}
 #world-canvas{display:block;}
 
@@ -161,6 +165,28 @@ canvas{display:block;width:100%;}
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:var(--bg-deep);}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+
+/* Executive sci-fi UI polish */
+body{background:radial-gradient(circle at 65% -10%,rgba(0,130,220,.18),transparent 36%),linear-gradient(180deg,#03070d 0%,#08111d 45%,#050912 100%);}
+header{min-height:82px;background:linear-gradient(180deg,rgba(8,18,32,.96),rgba(4,9,16,.98));box-shadow:0 12px 36px rgba(0,0,0,.35);}
+.logo-text{font-size:18px;color:#f3fbff;text-shadow:0 0 18px rgba(0,212,255,.35);}
+.logo-sub{font-size:12px;color:#d8e8ff;}
+.sidebar{background:linear-gradient(180deg,rgba(7,22,36,.98),rgba(5,13,24,.98));border-right:1px solid rgba(48,123,180,.34);}
+.sidebar-section{border-bottom:1px solid rgba(64,148,210,.22);}
+.section-label{font-size:13px;color:#53bfff;font-weight:700;}
+.card{background:linear-gradient(180deg,rgba(14,29,48,.92),rgba(7,15,27,.96));border:1px solid rgba(70,145,205,.28);box-shadow:0 12px 32px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.03);}
+.card-header{background:linear-gradient(180deg,rgba(13,28,47,.94),rgba(7,14,26,.94));}
+.card-title{font-size:14px;color:#f4fbff;text-transform:none;letter-spacing:.04em;}
+.kpi{min-height:92px;background:linear-gradient(160deg,rgba(21,41,66,.94),rgba(7,16,29,.98));border:1px solid rgba(68,140,200,.30);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
+.kpi-val{font-size:30px;color:#12bfff;text-shadow:0 0 18px rgba(0,180,255,.32);}
+.kpi-label{font-size:12px;color:#b9c7d8;text-transform:none;}
+#map-container{background:#000611;border-top:1px solid rgba(70,145,205,.18);min-height:520px;max-height:720px;}
+.proj-btn{font-size:12px;padding:8px 14px;}
+.proj-btn.active{background:linear-gradient(135deg,#0877d8,#004a94);color:#fff;box-shadow:0 0 18px rgba(0,128,255,.45);}
+.drop-zone{background:rgba(4,16,28,.64);border-color:rgba(92,168,235,.45);}
+.btn-run{font-size:14px;font-weight:700;background:linear-gradient(135deg,#0b83e6,#0355a8);color:#fff;border-color:#289cff;}
+
 </style>
 
 </head>
@@ -224,10 +250,13 @@ canvas{display:block;width:100%;}
     <div class="sidebar-section">
       <div class="info-wrap"><div class="section-label">ログファイル読み込み</div><span class="info-btn" tabindex="0" data-tip="CSVフォーマット（ヘッダー行不要）&lt;br&gt;列順: 時刻, ネットワーク対地, 帯域(bps), 中継A〜中継B, 緯度A, 経度A, 緯度B, 経度B&lt;br&gt;例: 20250115080000,東京〜ロンドン,9800000,TYO〜ANC,35.68,139.65,61.22,-149.90">i</span></div>
       <div class="drop-zone" id="drop-zone">
-        <input type="file" id="file-input" accept=".csv,.log,.txt">
         <div class="drop-icon">📡</div>
-        <div class="drop-text">CSVをドロップ<br>または<em>クリックして選択</em></div>
+        <div class="drop-text">CSVファイルを選択</div>
+        <input type="file" id="file-input" accept=".csv,.txt,.log,text/csv,text/plain,*/*" onchange="handleFileInputChange(event)">
+        <div class="file-mobile-note">iPhoneではドラッグ&ドロップではなく、上の「ファイルを選択」からCSVを選んでください。</div>
       </div>
+      <textarea id="csv-paste" class="mobile-paste-area" placeholder="ファイル選択で読めない場合は、CSV本文をここに貼り付け"></textarea>
+      <button class="btn-mobile-load" type="button" onclick="loadCsvFromPaste()">貼り付けCSVを読み込む</button>
       <div id="file-info" style="margin-top:7px;font-size:10px;color:var(--text-dim);font-family:'Space Mono',monospace;"></div>
       <div id="recent-files" style="margin-top:8px;"></div>
     </div>
@@ -294,6 +323,40 @@ canvas{display:block;width:100%;}
 </div>
 
 <script>
+
+// ── Non-blocking Leaflet loader ─────────────────────────────────────────
+// 外部CDNが社内NW等でブロックされても、CSV読み込みなど本体機能を止めない。
+let leafletLoadPromise = null;
+function loadLeafletNonBlocking() {
+  if (typeof L !== 'undefined') return Promise.resolve(true);
+  if (leafletLoadPromise) return leafletLoadPromise;
+
+  leafletLoadPromise = new Promise((resolve, reject) => {
+    const cssId = 'leaflet-css-dynamic';
+    if (!document.getElementById(cssId)) {
+      const link = document.createElement('link');
+      link.id = cssId;
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
+
+    const js = document.createElement('script');
+    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.async = true;
+    js.onload = () => resolve(true);
+    js.onerror = () => reject(new Error('Leaflet CDN load failed'));
+    document.head.appendChild(js);
+
+    // CDN応答待ちで画面全体を止めない。失敗時はCanvas地図にフォールバック。
+    setTimeout(() => {
+      if (typeof L !== 'undefined') resolve(true);
+      else reject(new Error('Leaflet CDN load timeout'));
+    }, 4000);
+  });
+  return leafletLoadPromise;
+}
+
 // ══════════════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════════════
@@ -358,37 +421,142 @@ function renderRecentFiles(list) {
 window.addEventListener('load', () => { loadRecentFiles(); });
 
 // ══════════════════════════════════════════════════════
-// FILE HANDLING
+// FILE HANDLING（地図描画と完全分離。CDN/Leaflet失敗時も必ず動く）
 // ══════════════════════════════════════════════════════
-document.getElementById('file-input').addEventListener('change', e => {
-  const f = e.target.files[0];
-  if (f) readFile(f);
-  e.target.value = ''; // 同じファイルを再選択できるようリセット
-});
-const dz = document.getElementById('drop-zone');
-dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
-dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-dz.addEventListener('drop', e => {
-  e.preventDefault(); dz.classList.remove('drag-over');
-  const f = e.dataTransfer.files[0]; if(f) readFile(f);
-});
-// drop-zone クリック: file-input以外の場所をクリックしたときのみダイアログ
-dz.addEventListener('click', e => {
-  if (e.target !== document.getElementById('file-input')) {
-    document.getElementById('file-input').click();
+function handleFileInputChange(e) {
+  try {
+    const input = e && e.target ? e.target : document.getElementById('file-input');
+    const f = input && input.files ? input.files[0] : null;
+    if (!f) { showFileError('ファイルが選択されていません'); return; }
+    // 重要: iPhone/Safariでは FileReader が読む前に input.value を空にすると
+    // ファイル参照が切れて読み込めないことがあるため、ここではリセットしない。
+    readFile(f);
+  } catch (err) {
+    showFileError('ファイル選択処理でエラー: ' + (err && err.message ? err.message : err));
   }
-});
+}
+
+function showFileError(msg) {
+  const el = document.getElementById('file-info');
+  if (el) el.textContent = '✕ ' + msg;
+  try { setStatus(false, 'FILE LOAD ERROR'); } catch(e) {}
+  console.error(msg);
+}
+
+function bindFileHandlers() {
+  const input = document.getElementById('file-input');
+  const dz = document.getElementById('drop-zone');
+  if (!input || !dz || dz.dataset.bound === '1') return;
+  dz.dataset.bound = '1';
+
+  // input自身のchange。inline onchangeも付けて二重に安全化。
+  input.addEventListener('change', handleFileInputChange);
+
+  dz.addEventListener('dragover', e => {
+    e.preventDefault();
+    dz.classList.add('drag-over');
+  });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    const f = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files[0] : null;
+    if (f) readFile(f);
+  });
+  // iPhoneでは非表示inputや親要素からの programmatic click が失敗しやすいため、
+  // 親要素クリックではファイル選択を開かない。ユーザーに実inputを直接タップしてもらう。
+  dz.addEventListener('click', e => {
+    if (e.target !== input) {
+      const el = document.getElementById('file-info');
+      if (el) el.textContent = '上の「ファイルを選択」ボタンを直接タップしてください';
+    }
+  });
+}
+
+// DOM構築直後・DOMContentLoaded・load の3段階で登録。どこかで失敗しても入力を生かす。
+bindFileHandlers();
+document.addEventListener('DOMContentLoaded', bindFileHandlers);
+window.addEventListener('load', bindFileHandlers);
+
+function loadCsvFromPaste() {
+  try {
+    const ta = document.getElementById('csv-paste');
+    const csvText = ta ? String(ta.value || '') : '';
+    if (!csvText.trim()) { showFileError('貼り付けCSVが空です'); return; }
+    rawRows = parseCSV(csvText);
+    const el = document.getElementById('file-info');
+    if (el) el.textContent = `✓ 貼り付けCSV  (${rawRows.length} 件)`;
+    setStatus(true, `${rawRows.length} レコード読み込み済`);
+    updateRecentFiles('貼り付けCSV', csvText);
+    if (!rawRows.length) showFileError('貼り付けCSVは読めましたが、有効なCSV行が見つかりませんでした');
+  } catch (err) {
+    showFileError('貼り付けCSV解析でエラー: ' + (err && err.message ? err.message : err));
+  }
+}
 
 function readFile(f) {
-  const r = new FileReader();
-  r.onload = async ev => {
-    const csvText = ev.target.result;
-    rawRows = parseCSV(csvText);
-    document.getElementById('file-info').textContent = `✓ ${f.name}  (${rawRows.length} 件)`;
-    setStatus(true, `${rawRows.length} レコード読み込み済`);
-    updateRecentFiles(f.name, csvText);
-  };
-  r.readAsText(f, 'utf-8');
+  const fileName = f && f.name ? f.name : 'ファイル';
+  const info = document.getElementById('file-info');
+  if (info) info.textContent = `… ${fileName} を読み込み中`;
+
+  function finish(csvText) {
+    try {
+      csvText = String(csvText || '').replace(/^\uFEFF/, '');
+      rawRows = parseCSV(csvText);
+      const el = document.getElementById('file-info');
+      if (el) el.textContent = `✓ ${fileName}  (${rawRows.length} 件)`;
+      setStatus(true, `${rawRows.length} レコード読み込み済`);
+      updateRecentFiles(fileName, csvText);
+      if (!rawRows.length) {
+        showFileError(`${fileName} は読み込めましたが、有効なCSV行が見つかりませんでした。CSV本文貼り付け欄も試してください。`);
+      }
+    } catch (err) {
+      showFileError('CSV解析でエラー: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  function readByFileReaderText() {
+    try {
+      const r = new FileReader();
+      r.onerror = () => readByArrayBuffer();
+      r.onload = ev => finish(ev && ev.target ? ev.target.result : '');
+      r.readAsText(f, 'utf-8');
+    } catch (e) {
+      readByArrayBuffer();
+    }
+  }
+
+  function readByArrayBuffer() {
+    try {
+      const r = new FileReader();
+      r.onerror = () => showFileError(fileName + ' を読み込めませんでした');
+      r.onload = ev => {
+        try {
+          const buf = ev && ev.target ? ev.target.result : null;
+          let txt = '';
+          if (window.TextDecoder && buf) {
+            try { txt = new TextDecoder('utf-8').decode(buf); } catch(e) {}
+            if (!txt || txt.indexOf('�') >= 0) {
+              try { txt = new TextDecoder('shift_jis').decode(buf); } catch(e) {}
+            }
+          }
+          finish(txt);
+        } catch (err) {
+          showFileError(fileName + ' の読込変換でエラー: ' + (err && err.message ? err.message : err));
+        }
+      };
+      r.readAsArrayBuffer(f);
+    } catch (err) {
+      showFileError(fileName + ' を読み込めませんでした: ' + (err && err.message ? err.message : err));
+    }
+  }
+
+  // iOS Safariでは File.text() の方が安定する場合がある。失敗時は FileReader へフォールバック。
+  if (f && typeof f.text === 'function') {
+    f.text().then(finish).catch(readByFileReaderText);
+  } else {
+    readByFileReaderText();
+  }
 }
 
 function parseCSV(text) {
@@ -698,6 +866,7 @@ function renderResults(res) {
           <button class="proj-btn active" id="btn-globe" onclick="setProj('globe')">🌐 3D</button>
           <button class="proj-btn"        id="btn-moll"  onclick="setProj('mercator')">🗺 2D</button>
         </div>
+        <span id="earth-texture-status" style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text-dim);white-space:nowrap;">3D地球画像 未読込</span>
         <div style="display:flex;gap:3px;align-items:center;">
           <button onclick="mapZoom(1)" style="width:26px;height:26px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--cyan);font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;" title="拡大">＋</button>
           <button onclick="mapZoom(-1)" style="width:26px;height:26px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--cyan);font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;" title="縮小">－</button>
@@ -1172,14 +1341,17 @@ function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
     const mid = sp[Math.floor(sp.length/2)];
     hitAreas.push({ee,util,bObj,mx:mid[0],my:mid[1],rgb,sp,thick});
 
-    wpts.forEach(([,wp],i)=>{
+    wpts.forEach(([wpKey,wp],i)=>{
       const [nx,ny]=project(wp.lon,wp.lat);
-      nodeList.push({nx,ny,isEnd:i===0||i===wpts.length-1,rgb});
+      const rawName = (wp && wp.name) ? wp.name : wpKey;
+      const label = cityDisplayName(rawName) || cityDisplayName(String(rawName || '').toUpperCase()) || rawName;
+      nodeList.push({nx,ny,isEnd:i===0||i===wpts.length-1,rgb,label});
     });
   }
 
   // Nodes
   for(const{nx,ny,isEnd,rgb}of nodeList){
+    if(!isFinite(nx)||!isFinite(ny)) continue;
     if(isEnd){
       const ng=ctx.createRadialGradient(nx,ny,2,nx,ny,10);
       ng.addColorStop(0,`rgba(${rgb},0.55)`); ng.addColorStop(1,`rgba(${rgb},0)`);
@@ -1189,6 +1361,39 @@ function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
     ctx.fillStyle=isEnd?`rgba(${rgb},0.95)`:'rgba(255,255,255,0.7)'; ctx.fill();
     ctx.strokeStyle='rgba(20,20,20,0.7)'; ctx.lineWidth=1.5; ctx.stroke();
   }
+
+  // 2D都市名ラベル（Leafletの地名タイルが出ない環境でも、CSV上の都市名を必ず表示）
+  const labelNodes = [];
+  for (const n of nodeList) {
+    if (!n.label || !isFinite(n.nx) || !isFinite(n.ny)) continue;
+    const label = String(n.label);
+    // 端点は必ず表示。中継点は主要都市または短いコード/日本語名だけ表示して混雑を抑える。
+    const shouldShow = n.isEnd || MAJOR_CITIES.has(label) || /^[A-Z0-9]{2,5}$/.test(label) || /[ぁ-んァ-ン一-龥]/.test(label);
+    if (!shouldShow) continue;
+    if (labelNodes.some(d => d.label === label && Math.hypot(d.nx - n.nx, d.ny - n.ny) < 34)) continue;
+    labelNodes.push(n);
+  }
+  ctx.save();
+  ctx.font = `11px 'Inter', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const {nx,ny,isEnd,rgb,label} of labelNodes) {
+    const text = String(label);
+    const y = ny + (isEnd ? 18 : -16);
+    const tw = ctx.measureText(text).width;
+    ctx.fillStyle = 'rgba(3, 10, 22, 0.86)';
+    ctx.strokeStyle = `rgba(${rgb},0.85)`;
+    ctx.lineWidth = 1;
+    safeRoundRect(ctx, nx - tw/2 - 6, y - 9, tw + 12, 18, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#dff8ff';
+    ctx.shadowColor = `rgba(${rgb},0.75)`;
+    ctx.shadowBlur = 5;
+    ctx.fillText(text, nx, y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
 
   // 収容率ラベル（警告・危険のみ・重複排除）
   const fszPct=Math.max(9,Math.min(10,W/110));
@@ -1318,7 +1523,7 @@ function safeRoundRect(ctx, x, y, w, h, r) {
 // ── Globe rotation state ──────────────────────────────────────────────────
 let globeLon = 140; // center longitude (deg)
 let globeLat =  30; // center latitude  (deg)
-let globeZoom = 0.38; // globe radius ratio — 初期は全体が見えるサイズ
+let globeZoom = 0.46; // globe radius ratio — 迫力ある地球表示
 let mercZoom = 1.0;   // mercator zoom scale
 let mercCenterLon = 139.69;
 let mercCenterLat = 0;
@@ -1417,15 +1622,73 @@ function drawLeaflet(res, activeBucket) {
   cancelAnimationFrame(animFrameId);
   cancelAnimationFrame(leafletAnimId);
 
-  const lmd = document.getElementById('leaflet-map');
-  if (lmd) lmd.style.display = 'none';
+  const canvas = document.getElementById('world-canvas');
+  if (canvas) canvas.style.display = 'none';
 
-  // アニメーションループ開始
-  function loop() {
+  const lmd = document.getElementById('leaflet-map');
+  const overlay = document.getElementById('leaflet-overlay');
+
+  // Leafletは非同期で読み込む。CDNが遅い/ブロック時もCSV読み込みや分析機能を止めない。
+  if (typeof L === 'undefined') {
     drawMercatorCanvas(res, activeBucket);
-    animFrameId = requestAnimationFrame(loop);
+    loadLeafletNonBlocking()
+      .then(() => { if (projMode === 'mercator') drawLeaflet(res, activeBucket); })
+      .catch(() => { /* Canvasフォールバック継続 */ });
+    return;
   }
-  loop();
+  if (!lmd || !overlay) {
+    drawMercatorCanvas(res, activeBucket);
+    return;
+  }
+
+  lmd.style.display = 'block';
+  lmd.style.height = '540px';
+  lmd.style.minHeight = '440px';
+  overlay.style.display = 'block';
+  overlay.style.pointerEvents = 'auto';
+
+  const container = document.getElementById('map-container');
+  if (container) {
+    container.classList.remove('globe-mode');
+    container.style.overflow = 'hidden';
+  }
+
+  if (!leafletMap) {
+    leafletMap = L.map('leaflet-map', {
+      center: [22, 140],
+      zoom: 2,
+      minZoom: 1,
+      maxZoom: 8,
+      worldCopyJump: false,
+      zoomControl: false,
+      attributionControl: true
+    });
+
+    // 衛星画像ベースマップ。表示ロジックとは分離し、座標計算は既存のlat/lonをそのまま使う。
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 8,
+      attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+    }).addTo(leafletMap);
+
+    // 地名・国境ラベルを薄く重ねる。不要な場合はこのtileLayerをコメントアウト可能。
+    L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 8,
+      opacity: 0.95,
+      attribution: 'Reference &copy; Esri'
+    }).addTo(leafletMap);
+
+    leafletMap.on('move zoom resize', () => {
+      if (projMode === 'mercator' && lastRes && lastRenderBucket !== null) {
+        drawArcOverlay(lastRes, lastRenderBucket, leafletMap, 'leaflet-overlay', 'mercator');
+      }
+    });
+  }
+
+  setTimeout(() => {
+    leafletMap.invalidateSize();
+    drawArcOverlay(res, activeBucket, leafletMap, 'leaflet-overlay', 'mercator');
+    initMercatorHover();
+  }, 80);
 }
 
 
@@ -1789,6 +2052,325 @@ function drawLeafletOverlay(res, activeBucket) {
   setTimeout(initMercatorHover, 50);
 }
 
+
+// ──────────────────────────────────────────────────────────────────────
+// HIGH-QUALITY REALISTIC GLOBE TEXTURE LAYER
+// 位置情報・経路描画は既存のorthoProject/greatCirclePointsをそのまま使用。
+// 背景の地球だけを「矩形パッチ貼り」から「ピクセル単位の球面投影」に変更する。
+// これにより、海岸線が四角く継ぎはぎに見える問題を解消する。
+// ──────────────────────────────────────────────────────────────────────
+const EARTH_DAY_TEXTURE_URLS = [
+  // Three.js公式サンプルのBlue Marble系。CORSが通りやすく、iPhoneでも比較的安定。
+  'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg',
+  'https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg',
+  'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg',
+  'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/land_ocean_ice_cloud_2048.jpg',
+  'https://www.solarsystemscope.com/textures/download/2k_earth_daymap.jpg'
+];
+let earthDayImg = null;
+let earthDayReady = false;
+let earthDayLoading = false;
+let earthDaySourceIndex = 0;
+let earthTextureStatus = '未読込';
+let earthTextureCanvas = null;
+let earthTextureCtx = null;
+let earthTexturePixels = null;
+let earthTextureW = 0;
+let earthTextureH = 0;
+let earthTexturePixelReady = false;
+let earthRenderCache = { key: '', imageData: null, canvas: null };
+
+function setEarthTextureStatus(msg) {
+  earthTextureStatus = msg;
+  const el = document.getElementById('earth-texture-status');
+  if (el) el.textContent = msg;
+}
+
+function prepareEarthTexturePixels(img) {
+  try {
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    if (!srcW || !srcH) return false;
+
+    // iPhoneの処理負荷を考慮しつつ、海岸線のギザギザが目立たない解像度に正規化。
+    const maxW = 2048;
+    const scale = Math.min(1, maxW / srcW);
+    earthTextureW = Math.max(512, Math.round(srcW * scale));
+    earthTextureH = Math.max(256, Math.round(srcH * scale));
+
+    earthTextureCanvas = document.createElement('canvas');
+    earthTextureCanvas.width = earthTextureW;
+    earthTextureCanvas.height = earthTextureH;
+    earthTextureCtx = earthTextureCanvas.getContext('2d', { willReadFrequently: true });
+    earthTextureCtx.drawImage(img, 0, 0, earthTextureW, earthTextureH);
+    earthTexturePixels = earthTextureCtx.getImageData(0, 0, earthTextureW, earthTextureH).data;
+    earthTexturePixelReady = true;
+    earthRenderCache = { key: '', imageData: null, canvas: null };
+    return true;
+  } catch (e) {
+    // CORSでgetImageDataできない場合はピクセル投影を使えない。
+    earthTexturePixelReady = false;
+    earthTexturePixels = null;
+    return false;
+  }
+}
+
+function ensureEarthTextureLoaded() {
+  if (earthDayReady || earthDayLoading) return;
+  earthDayLoading = true;
+  const url = EARTH_DAY_TEXTURE_URLS[earthDaySourceIndex];
+  setEarthTextureStatus('3D地球画像 読込中');
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.decoding = 'async';
+  img.onload = () => {
+    earthDayImg = img;
+    earthDayReady = true;
+    earthDayLoading = false;
+    const pixelOK = prepareEarthTexturePixels(img);
+    setEarthTextureStatus(pixelOK ? '3D高精細テクスチャ 適用中' : '3D画像 適用中 / 高精細不可');
+    if (projMode === 'globe' && lastRes && lastRenderBucket !== null) {
+      drawGlobe(lastRes, lastRenderBucket);
+    }
+  };
+  img.onerror = () => {
+    earthDaySourceIndex += 1;
+    earthDayLoading = false;
+    earthDayReady = false;
+    if (earthDaySourceIndex < EARTH_DAY_TEXTURE_URLS.length) {
+      setTimeout(ensureEarthTextureLoaded, 80);
+    } else {
+      setEarthTextureStatus('3D地球画像 読込失敗 / 簡易地図');
+    }
+  };
+  img.src = url;
+}
+
+function sampleEarthTextureBilinear(lonDeg, latDeg) {
+  if (!earthTexturePixels || !earthTextureW || !earthTextureH) return [20, 55, 90, 255];
+
+  // equirectangular: lon -180..180, lat 90..-90
+  let u = (lonDeg + 180) / 360;
+  u = u - Math.floor(u);
+  let v = (90 - latDeg) / 180;
+  v = Math.max(0, Math.min(1, v));
+
+  const x = u * (earthTextureW - 1);
+  const y = v * (earthTextureH - 1);
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const x1 = (x0 + 1) % earthTextureW, y1 = Math.min(earthTextureH - 1, y0 + 1);
+  const fx = x - x0, fy = y - y0;
+
+  const idx = (xx, yy) => (yy * earthTextureW + xx) * 4;
+  const i00 = idx(x0, y0), i10 = idx(x1, y0), i01 = idx(x0, y1), i11 = idx(x1, y1);
+  const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
+
+  return [
+    earthTexturePixels[i00]   * w00 + earthTexturePixels[i10]   * w10 + earthTexturePixels[i01]   * w01 + earthTexturePixels[i11]   * w11,
+    earthTexturePixels[i00+1] * w00 + earthTexturePixels[i10+1] * w10 + earthTexturePixels[i01+1] * w01 + earthTexturePixels[i11+1] * w11,
+    earthTexturePixels[i00+2] * w00 + earthTexturePixels[i10+2] * w10 + earthTexturePixels[i01+2] * w01 + earthTexturePixels[i11+2] * w11,
+    255
+  ];
+}
+
+function screenToLonLatOnGlobe(px, py, cx, cy, R, centerLon, centerLat) {
+  const sx = (px - cx) / R;
+  const sy = (py - cy) / R;
+  const r2 = sx * sx + sy * sy;
+  if (r2 > 1) return null;
+
+  // orthoProjectの逆変換。
+  // 画面Xはy2、画面Yは-z2、手前方向はx2。
+  const y2 = sx;
+  const z2 = -sy;
+  const x2 = Math.sqrt(Math.max(0, 1 - r2));
+
+  const cla = toRad(centerLat), clo = toRad(centerLon);
+  // inverse rotate around Y by centerLat
+  const x1 = x2 * Math.cos(cla) - z2 * Math.sin(cla);
+  const y1 = y2;
+  const z1 = x2 * Math.sin(cla) + z2 * Math.cos(cla);
+
+  // inverse rotate around Z by centerLon
+  const x0 = x1 * Math.cos(clo) - y1 * Math.sin(clo);
+  const y0 = x1 * Math.sin(clo) + y1 * Math.cos(clo);
+  const z0 = z1;
+
+  let lon = Math.atan2(y0, x0) * 180 / Math.PI;
+  let lat = Math.asin(Math.max(-1, Math.min(1, z0))) * 180 / Math.PI;
+  if (lon > 180) lon -= 360;
+  if (lon < -180) lon += 360;
+  return { lon, lat, x2, sx, sy };
+}
+
+function drawProceduralClouds(ctx, cx, cy, R, centerLon, centerLat) {
+  // 軽量な雲レイヤー。テクスチャに雲が薄い場合でも、衛星写真らしさを補う。
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+  ctx.globalCompositeOperation = 'screen';
+  const t = Date.now() * 0.00001;
+  for (let lat = -58; lat <= 62; lat += 16) {
+    ctx.beginPath(); let started = false;
+    for (let lon = -180; lon <= 180; lon += 5) {
+      const wave = Math.sin(toRad(lon * 2.4 + lat * 1.1) + t * 40) * 4;
+      const p = orthoProject(lon + t * 180, lat + wave, centerLon, centerLat, cx, cy, R * 1.006);
+      if (!p.visible) { started = false; continue; }
+      if (!started) { ctx.moveTo(p.px, p.py); started = true; }
+      else ctx.lineTo(p.px, p.py);
+    }
+    ctx.strokeStyle = 'rgba(235,245,255,0.10)';
+    ctx.lineWidth = Math.max(0.8, R / 260);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawNightCityLights(ctx, cx, cy, R, centerLon, centerLat) {
+  // 疑似的な都市光。実データではないが、夜側の情報量を補い、提案画像の質感に寄せる。
+  const cities = [
+    [139.69,35.68], [116.40,39.90], [121.47,31.23], [103.85,1.29], [77.21,28.61],
+    [55.27,25.20], [51.39,35.69], [28.97,41.01], [37.62,55.75], [2.35,48.86],
+    [-0.13,51.51], [13.40,52.52], [-74.00,40.71], [-118.24,34.05], [-46.63,-23.55],
+    [31.24,30.04], [18.42,-33.93], [151.21,-33.87], [106.82,-6.20], [100.50,13.75]
+  ];
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+  ctx.globalCompositeOperation = 'screen';
+  for (const [lon, lat] of cities) {
+    const p = orthoProject(lon, lat, centerLon, centerLat, cx, cy, R * 1.002);
+    if (!p.visible) continue;
+    const night = Math.max(0, Math.min(1, 0.72 - p.Z));
+    const alpha = 0.08 + night * 0.42;
+    const g = ctx.createRadialGradient(p.px, p.py, 0, p.px, p.py, R * 0.025);
+    g.addColorStop(0, `rgba(255,220,120,${alpha})`);
+    g.addColorStop(0.35, `rgba(255,190,80,${alpha * 0.45})`);
+    g.addColorStop(1, 'rgba(255,180,70,0)');
+    ctx.beginPath(); ctx.arc(p.px, p.py, R * 0.025, 0, Math.PI * 2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawTexturedGlobe(ctx, cx, cy, R, centerLon, centerLat) {
+  ensureEarthTextureLoaded();
+  if (!earthDayReady || !earthDayImg) return false;
+
+  // 高精細モード：画面ピクセルから球面座標へ逆変換してテクスチャを直接サンプリング。
+  // 矩形パッチ貼りの継ぎ目が出ない。
+  if (earthTexturePixelReady) {
+    const x0 = Math.max(0, Math.floor(cx - R));
+    const y0 = Math.max(0, Math.floor(cy - R));
+    const x1 = Math.min(ctx.canvas.width / (window.devicePixelRatio || 1), Math.ceil(cx + R));
+    const y1 = Math.min(ctx.canvas.height / (window.devicePixelRatio || 1), Math.ceil(cy + R));
+    const w = Math.max(1, x1 - x0);
+    const h = Math.max(1, y1 - y0);
+
+    const cacheKey = [Math.round(centerLon * 10), Math.round(centerLat * 10), Math.round(R), w, h, earthDaySourceIndex].join('|');
+    let imgData = earthRenderCache.key === cacheKey ? earthRenderCache.imageData : null;
+    let patchCanvas = earthRenderCache.key === cacheKey ? earthRenderCache.canvas : null;
+
+    if (!imgData || !patchCanvas) {
+      // 重要: drawGlobe側でctx.scale(dpr,dpr)済みのため、putImageDataを直接ctxへ行うと
+      // Safari/iPhoneではテクスチャだけが実寸ピクセル扱いになり、地球儀サイズとずれる。
+      // いったんCSSピクセル寸法のオフスクリーンCanvasへ描き、drawImageで本Canvasへ転送する。
+      imgData = ctx.createImageData(w, h);
+      const data = imgData.data;
+      let di = 0;
+      for (let yy = 0; yy < h; yy++) {
+        const py = y0 + yy;
+        for (let xx = 0; xx < w; xx++, di += 4) {
+          const px = x0 + xx;
+          const ll = screenToLonLatOnGlobe(px, py, cx, cy, R, centerLon, centerLat);
+          if (!ll) { data[di+3] = 0; continue; }
+
+          const c = sampleEarthTextureBilinear(ll.lon, ll.lat);
+
+          // ライティング。画面左上から光が当たる想定で、球面の立体感を作る。
+          const nx = ll.x2;
+          const ny = ll.sx;
+          const nz = -ll.sy;
+          const lx = 0.58, ly = -0.34, lz = 0.74;
+          const lambert = Math.max(0, nx * lx + ny * ly + nz * lz);
+          const rim = Math.pow(Math.max(0, 1 - nx), 1.7);
+          const shade = 0.22 + lambert * 0.98;
+          const haze = rim * 42;
+
+          data[di]   = Math.min(255, c[0] * shade + haze * 0.25);
+          data[di+1] = Math.min(255, c[1] * shade + haze * 0.55);
+          data[di+2] = Math.min(255, c[2] * shade + haze);
+          data[di+3] = 255;
+        }
+      }
+      patchCanvas = document.createElement('canvas');
+      patchCanvas.width = w;
+      patchCanvas.height = h;
+      patchCanvas.getContext('2d').putImageData(imgData, 0, 0);
+      earthRenderCache = { key: cacheKey, imageData: imgData, canvas: patchCanvas };
+    }
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(patchCanvas, x0, y0, w, h);
+
+    // 海・大気・夜側の演出を重ねる。
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    const limb = ctx.createRadialGradient(cx - R * 0.24, cy - R * 0.20, R * 0.10, cx, cy, R);
+    limb.addColorStop(0, 'rgba(255,255,255,0.02)');
+    limb.addColorStop(0.58, 'rgba(35,85,140,0.05)');
+    limb.addColorStop(0.86, 'rgba(0,15,45,0.24)');
+    limb.addColorStop(1, 'rgba(0,8,25,0.62)');
+    ctx.fillStyle = limb;
+    ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    ctx.restore();
+
+    drawNightCityLights(ctx, cx, cy, R, centerLon, centerLat);
+    drawProceduralClouds(ctx, cx, cy, R, centerLon, centerLat);
+    ctx.restore();
+    return true;
+  }
+
+  // 低互換モード：getImageDataがCORSで使えない場合のみ、従来方式より細かいパッチで描く。
+  // これは最終フォールバックであり、通常は上の高精細モードが使われる。
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+  const img = earthDayImg;
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const dLon = 1.5;
+  const dLat = 1.5;
+  for (let lat = -87; lat < 87; lat += dLat) {
+    const lat2 = Math.min(87, lat + dLat);
+    for (let lon = -180; lon < 180; lon += dLon) {
+      const lon2 = Math.min(180, lon + dLon);
+      const p00 = orthoProject(lon,  lat,  centerLon, centerLat, cx, cy, R);
+      const p10 = orthoProject(lon2, lat,  centerLon, centerLat, cx, cy, R);
+      const p11 = orthoProject(lon2, lat2, centerLon, centerLat, cx, cy, R);
+      const p01 = orthoProject(lon,  lat2, centerLon, centerLat, cx, cy, R);
+      if (!p00.visible && !p10.visible && !p11.visible && !p01.visible) continue;
+      const sx = ((lon + 180) / 360) * iw;
+      const sy = ((90 - lat2) / 180) * ih;
+      const sw = Math.max(1, ((lon2 - lon) / 360) * iw);
+      const sh = Math.max(1, ((lat2 - lat) / 180) * ih);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(p00.px, p00.py); ctx.lineTo(p10.px, p10.py);
+      ctx.lineTo(p11.px, p11.py); ctx.lineTo(p01.px, p01.py);
+      ctx.closePath(); ctx.clip();
+      ctx.transform(p10.px - p00.px, p10.py - p00.py, p01.px - p00.px, p01.py - p00.py, p00.px, p00.py);
+      try { ctx.drawImage(img, sx, sy, sw, sh, 0, 0, 1.03, 1.03); } catch(e) {}
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+  return true;
+}
+
 function drawGlobe(res, activeBucket) {
   lastRes = res; lastRenderBucket = activeBucket;
   const _wc = document.getElementById('world-canvas');
@@ -1799,14 +2381,14 @@ function drawGlobe(res, activeBucket) {
     _wc.style.cursor = 'grab';
   }
   initGlobeDrag();
-  const mc2 = document.getElementById('map-container'); if(mc2){mc2.classList.add('globe-mode');}
+  const mc2 = document.getElementById('map-container'); if(mc2){mc2.classList.add('globe-mode'); mc2.style.overflow='hidden';}
 
   const canvas = document.getElementById('world-canvas');
   if (!canvas) return;
   const container = document.getElementById('map-container');
   const dpr = window.devicePixelRatio || 1;
   const W = container.offsetWidth;
-  const H = Math.round(W * 0.75);
+  const H = Math.round(W * 0.58);
   canvas.width  = W * dpr;
   canvas.height = H * dpr;
   canvas.style.width  = W + 'px';
@@ -1870,11 +2452,15 @@ function drawGlobe(res, activeBucket) {
     ctx.stroke();
   }
 
-  // ── Land (colored terrain) ──
-  drawLandColored(ctx,
-    (lon,lat) => orthoProject(lon,lat,globeLon,globeLat,cx,cy,R),
-    true
-  );
+  // ── Land / satellite texture ──
+  const textureDrawn = drawTexturedGlobe(ctx, cx, cy, R, globeLon, globeLat);
+  if (!textureDrawn) {
+    // オンライン画像が読めない場合は、既存の手書き地形にフォールバック
+    drawLandColored(ctx,
+      (lon,lat) => orthoProject(lon,lat,globeLon,globeLat,cx,cy,R),
+      true
+    );
+  }
 
   // ── Atmosphere rim ──
   const limb=ctx.createRadialGradient(cx,cy,R*0.88,cx,cy,R);
