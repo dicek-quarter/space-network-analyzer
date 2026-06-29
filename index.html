@@ -1341,7 +1341,61 @@ function drawArcOverlay(res, activeBucket, lmap, ovlId, mode) {
     }
 
     const mid = sp[Math.floor(sp.length/2)];
-    hitAreas.push({ee,util,bObj,mx:mid[0],my:mid[1],rgb,sp,thick});
+    // 経路全体のhitArea（従来仕様）
+    hitAreas.push({ee,util,bObj,mx:mid[0],my:mid[1],rgb,sp,thick,isSeg:false});
+
+    // ── 2D Leaflet: 区間単位hitAreaを追加（3D地球儀と仕様統一） ──
+    // 線クリック時は、経路全体ではなくクリックしたリンク区間の
+    // 「収容ネットワーク一覧」を表示できるようにする。
+    if (analysisResult && analysisResult.segStats) {
+      const wpArr2 = wpts.map(([,wp]) => wp);
+      for (let si = 0; si < wpArr2.length - 1; si++) {
+        const wpA = wpArr2[si], wpB = wpArr2[si+1];
+        if (!wpA || !wpB || !wpA.name || !wpB.name) continue;
+        const segKey = wpA.name + '-' + wpB.name;
+        const segData = analysisResult.segStats[segKey];
+        if (!segData || !segData.length) continue;
+        const segBObj = segData.reduce((p,c) =>
+          Math.abs(c.bucket-activeBucket) < Math.abs(p.bucket-activeBucket) ? c : p);
+
+        const segUtil = segBObj.util;
+        const segRgb = segUtil >= (analysisResult.thAlert || 90) ? '255,80,30'
+                     : segUtil >= (analysisResult.thWarn  || 70) ? '255,190,20'
+                     : '0,180,255';
+
+        const segArcRaw = greatCirclePoints(wpA.lon, wpA.lat, wpB.lon, wpB.lat, 50);
+        const cLon2 = lmap ? lmap.getCenter().lng : 139.69;
+        const segArcNorm = [];
+        if (segArcRaw.length) {
+          let prevN2 = segArcRaw[0][0] - cLon2;
+          while (prevN2 >  180) prevN2 -= 360;
+          while (prevN2 < -180) prevN2 += 360;
+          segArcNorm.push([prevN2 + cLon2, segArcRaw[0][1]]);
+          for (let j=1; j<segArcRaw.length; j++) {
+            let c2 = segArcRaw[j][0] - cLon2;
+            while (c2 >  180) c2 -= 360;
+            while (c2 < -180) c2 += 360;
+            let d2 = c2 - prevN2;
+            if (d2 >  180) d2 -= 360;
+            if (d2 < -180) d2 += 360;
+            prevN2 += d2;
+            segArcNorm.push([prevN2 + cLon2, segArcRaw[j][1]]);
+          }
+        }
+        const segSp = segArcNorm.map(([lo,la]) => project(lo,la));
+        if (segSp.length < 2) continue;
+        const segMid = segSp[Math.floor(segSp.length/2)];
+        const segTrafficRatio = maxBps > 0 ? Math.max(0, Math.min(1, (segBObj.avgBps || 0) / maxBps)) : 0;
+        const segThick = 0.9 + Math.pow(segTrafficRatio, 0.72) * 2.2 + (segUtil>=thAlert?0.45:segUtil>=thWarn?0.22:0);
+        hitAreas.push({
+          ee, segKey, nodeA:wpA.name, nodeB:wpB.name,
+          util:segUtil, bObj:segBObj, rgb:segRgb,
+          mx:segMid[0], my:segMid[1], sp:segSp, thick:segThick,
+          cityPath:[wpA.name, wpB.name], isSeg:true,
+          services: segBObj.services || {}
+        });
+      }
+    }
 
     wpts.forEach(([wpKey,wp],i)=>{
       const [nx,ny]=project(wp.lon,wp.lat);
@@ -1442,6 +1496,9 @@ function initMercatorHover() {
     el.style.pointerEvents = 'auto';
 
     el.addEventListener('mousemove', e => {
+      // 2D Leafletオーバーレイでも3Dと同じ小画面を出す。
+      // document側の汎用hover処理に消されないようイベント伝播を止める。
+      e.stopPropagation();
       const rect = el.getBoundingClientRect();
       const h = hitTestArcs(e.clientX - rect.left, e.clientY - rect.top);
       if (h) { showTooltip(e.clientX, e.clientY, h); el.style.cursor='pointer'; }
@@ -2751,7 +2808,18 @@ document.addEventListener('mousemove', e => {
   _hoverFrame = requestAnimationFrame(() => {
     _hoverFrame = null;
     const canvas = document.getElementById('world-canvas');
-    if (!canvas || canvas.style.display === 'none') { hideTooltip(); return; }
+    // 2D Leaflet表示時は leaflet-overlay 側の専用mousemoveがツールチップを表示する。
+    // ここで hideTooltip() すると、2Dの表示直後に消えてしまうため、
+    // overlay上にマウスがある場合は何もしない。
+    if (!canvas || canvas.style.display === 'none') {
+      const ov = document.getElementById('leaflet-overlay');
+      if (ov && ov.style.display !== 'none') {
+        const or = ov.getBoundingClientRect();
+        if (e.clientX >= or.left && e.clientX <= or.right &&
+            e.clientY >= or.top  && e.clientY <= or.bottom) return;
+      }
+      hideTooltip(); return;
+    }
     const rect = canvas.getBoundingClientRect();
     if (e.clientX < rect.left || e.clientX > rect.right ||
         e.clientY < rect.top  || e.clientY > rect.bottom) { hideTooltip(); return; }
@@ -3147,36 +3215,55 @@ function showModal(h) {
   const slotBucket = h.bObj.bucket;
 
   if (h.isSeg && h.nodeA && h.nodeB) {
-    // ── セグメント（区間）クリック: 通過サービス一覧 ──────────────────
+    // ── セグメント（区間）クリック: 2D/3D共通の「収容ネットワーク」表示 ──
+    // ポイント: 各ネットワーク単体の利用率ではなく、クリックしたリンク区間の
+    // 合計収容率(h.util)で「危険/警告/正常」を判定する。
+    // これにより、区間が危険なのに収容ネットワーク名だけ正常色になる不整合を防ぐ。
+    const segStatus = h.util >= thAlert ? '危険' : h.util >= thWarn ? '警告' : '正常';
+    const segColor  = h.util >= thAlert ? '255,80,30' : h.util >= thWarn ? '255,190,20' : '0,200,255';
+    const segBadgeBg = h.util >= thAlert ? 'rgba(255,80,30,0.16)' : h.util >= thWarn ? 'rgba(255,190,20,0.16)' : 'rgba(0,200,255,0.14)';
+
     document.getElementById('modal-title').textContent =
-      h.nodeA + ' 〜 ' + h.nodeB + ' — ' + fmtBucketLabel(slotBucket);
+      h.nodeA + ' 〜 ' + h.nodeB + ' — 収容ネットワーク';
 
     const services = h.services || {};
     const svcList = Object.entries(services)
-      .map(([ee, bps]) => ({ ee, bps, util: bps/capBps*100 }))
+      .map(([ee, bps]) => ({
+        ee,
+        bps,
+        svcUtil: bps/capBps*100,
+        share: 0
+      }))
       .sort((a,b) => b.bps - a.bps);
     const totalBps = svcList.reduce((s,v)=>s+v.bps,0);
+    svcList.forEach(svc => { svc.share = totalBps > 0 ? svc.bps / totalBps * 100 : 0; });
 
-    let body = '<div style="margin-bottom:10px;font-size:11px;color:var(--text-dim)">'
-      + '合計帯域: <b style="color:rgba(' + h.rgb + ',1)">' + fmtBps(totalBps) + '</b>　'
-      + '収容率: <b style="color:rgba(' + h.rgb + ',1)">' + h.util.toFixed(1) + '%</b>'
+    let body = '<div style="margin-bottom:10px;font-size:11px;color:var(--text-dim);line-height:1.8">'
+      + '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:' + segBadgeBg + ';border:1px solid rgba(' + segColor + ',0.45);color:rgba(' + segColor + ',1);font-weight:700;margin-right:8px">' + segStatus + '</span>'
+      + '区間収容率: <b style="color:rgba(' + segColor + ',1)">' + h.util.toFixed(1) + '%</b>　'
+      + '合計帯域: <b style="color:rgba(' + segColor + ',1)">' + fmtBps(totalBps || h.bObj.avgBps) + '</b>　'
+      + '<span style="white-space:nowrap">時刻: ' + fmtBucketLabel(slotBucket) + '</span>'
       + '</div>';
 
     if (svcList.length === 0) {
       body += '<div style="color:var(--text-dim);text-align:center;padding:16px">データなし</div>';
     } else {
+      body += '<div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">このリンク区間を通過しているネットワーク対地</div>';
       body += '<div style="overflow-x:auto"><table style="width:100%;font-size:10px;border-collapse:collapse">'
         + '<thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">'
-        + '<th style="text-align:left;padding:4px 6px">ネットワーク対地</th>'
-        + '<th style="text-align:right;padding:4px 6px">利用帯域</th>'
-        + '<th style="text-align:right;padding:4px 6px">収容率</th>'
+        + '<th style="text-align:left;padding:5px 6px">判定</th>'
+        + '<th style="text-align:left;padding:5px 6px">ネットワーク対地</th>'
+        + '<th style="text-align:right;padding:5px 6px">利用帯域</th>'
+        + '<th style="text-align:right;padding:5px 6px">寄与率</th>'
+        + '<th style="text-align:right;padding:5px 6px">区間収容率</th>'
         + '</tr></thead><tbody>';
       for (const svc of svcList) {
-        const c = svc.util >= thAlert ? '255,80,30' : svc.util >= thWarn ? '255,190,20' : '0,200,255';
-        body += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04)">'
-          + '<td style="padding:4px 6px;color:var(--cyan)">' + svc.ee + '</td>'
-          + '<td style="padding:4px 6px;text-align:right">' + fmtBps(svc.bps) + '</td>'
-          + '<td style="padding:4px 6px;text-align:right;font-weight:700;color:rgba(' + c + ',1)">' + svc.util.toFixed(1) + '%</td>'
+        body += '<tr style="border-bottom:1px solid rgba(255,255,255,0.04);background:rgba(' + segColor + ',0.035)">'
+          + '<td style="padding:5px 6px;white-space:nowrap"><span style="display:inline-block;padding:1px 6px;border-radius:999px;background:' + segBadgeBg + ';border:1px solid rgba(' + segColor + ',0.35);color:rgba(' + segColor + ',1);font-weight:700">' + segStatus + '</span></td>'
+          + '<td style="padding:5px 6px;color:rgba(' + segColor + ',1);font-weight:700">' + svc.ee + '</td>'
+          + '<td style="padding:5px 6px;text-align:right">' + fmtBps(svc.bps) + '</td>'
+          + '<td style="padding:5px 6px;text-align:right;color:var(--text-dim)">' + svc.share.toFixed(1) + '%</td>'
+          + '<td style="padding:5px 6px;text-align:right;font-weight:700;color:rgba(' + segColor + ',1)">' + h.util.toFixed(1) + '%</td>'
           + '</tr>';
       }
       body += '</tbody></table></div>';
