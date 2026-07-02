@@ -3351,6 +3351,154 @@ const SAMPLE_CSV = ``;
   });
 })();
 
+
+
+// ================================================================
+// PATCH: restore free mouse/touch rotation for the 3D globe
+// - attach drag handlers directly to the visible globe canvas as well as the container
+// - use Pointer Events with mouse/touch fallback
+// - suppress click/detail modal after a real drag
+// ================================================================
+let _globeDragPatchReady = false;
+let _globePointerDrag = null;
+let _globeSuppressClickUntil = 0;
+
+function initGlobeDrag() {
+  if (_globeDragPatchReady) return;
+  _globeDragPatchReady = true;
+
+  function activeTarget() {
+    return document.getElementById('world-canvas') || document.getElementById('map-container');
+  }
+  function dragTargetList() {
+    const a = [];
+    const canvas = document.getElementById('world-canvas');
+    const container = document.getElementById('map-container');
+    if (canvas) a.push(canvas);
+    if (container && container !== canvas) a.push(container);
+    return a;
+  }
+  function startDrag(clientX, clientY, pointerId, target) {
+    if (projMode !== 'globe') return;
+    const canvas = document.getElementById('world-canvas');
+    if (!canvas || canvas.style.display === 'none') return;
+    const rect = canvas.getBoundingClientRect();
+    const R = Math.min(rect.width || canvas.offsetWidth || 1, rect.height || canvas.offsetHeight || 1) * globeZoom;
+    _globePointerDrag = {
+      pointerId,
+      startX: clientX,
+      startY: clientY,
+      lastX: clientX,
+      lastY: clientY,
+      startLon: globeLon,
+      startLat: globeLat,
+      R: Math.max(80, R || 180),
+      moved: false
+    };
+    dragState = _globePointerDrag;
+    const mc = document.getElementById('map-container');
+    if (mc) mc.classList.add('dragging');
+    if (canvas) canvas.style.cursor = 'grabbing';
+    try { target && target.setPointerCapture && target.setPointerCapture(pointerId); } catch(e) {}
+  }
+  function moveDrag(clientX, clientY) {
+    const st = _globePointerDrag;
+    if (!st || projMode !== 'globe') return;
+    const dx = clientX - st.startX;
+    const dy = clientY - st.startY;
+    if (Math.abs(dx) + Math.abs(dy) > 3) st.moved = true;
+    globeLon = st.startLon - (dx / st.R) * 90;
+    globeLat = Math.max(-85, Math.min(85, st.startLat + (dy / st.R) * 90));
+    if (lastRes && lastRenderBucket !== null) {
+      cancelAnimationFrame(animFrameId);
+      drawGlobe(lastRes, lastRenderBucket);
+    }
+  }
+  function endDrag() {
+    const st = _globePointerDrag;
+    if (st && st.moved) _globeSuppressClickUntil = Date.now() + 350;
+    _globePointerDrag = null;
+    dragState = null;
+    const mc = document.getElementById('map-container');
+    const canvas = document.getElementById('world-canvas');
+    if (mc) mc.classList.remove('dragging');
+    if (canvas) canvas.style.cursor = 'grab';
+  }
+
+  // Prevent the existing click-to-detail handler from firing immediately after a drag.
+  document.addEventListener('click', function(e) {
+    if (Date.now() < _globeSuppressClickUntil && projMode === 'globe') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);
+
+  function bindTargets() {
+    for (const el of dragTargetList()) {
+      if (el._globeDragPatchBound) continue;
+      el._globeDragPatchBound = true;
+      el.style.touchAction = 'none';
+      el.style.cursor = 'grab';
+
+      if (window.PointerEvent) {
+        el.addEventListener('pointerdown', function(e) {
+          if (projMode !== 'globe') return;
+          if (e.button !== undefined && e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          startDrag(e.clientX, e.clientY, e.pointerId, el);
+        }, {passive:false});
+      }
+
+      // Mouse fallback
+      el.addEventListener('mousedown', function(e) {
+        if (window.PointerEvent) return;
+        if (projMode !== 'globe' || e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        startDrag(e.clientX, e.clientY, 'mouse', el);
+      }, {passive:false});
+
+      // Touch fallback
+      el.addEventListener('touchstart', function(e) {
+        if (window.PointerEvent) return;
+        if (projMode !== 'globe' || !e.touches || !e.touches.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const t = e.touches[0];
+        startDrag(t.clientX, t.clientY, 'touch', el);
+      }, {passive:false});
+    }
+  }
+
+  bindTargets();
+  // world-canvas is recreated/shown after analysis, so bind again shortly after render cycles.
+  setInterval(bindTargets, 800);
+
+  document.addEventListener('pointermove', function(e) {
+    if (!_globePointerDrag || projMode !== 'globe') return;
+    e.preventDefault();
+    moveDrag(e.clientX, e.clientY);
+  }, {passive:false});
+  document.addEventListener('pointerup', endDrag, {passive:true});
+  document.addEventListener('pointercancel', endDrag, {passive:true});
+
+  document.addEventListener('mousemove', function(e) {
+    if (window.PointerEvent) return;
+    moveDrag(e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchmove', function(e) {
+    if (window.PointerEvent) return;
+    if (!_globePointerDrag || projMode !== 'globe' || !e.touches || !e.touches.length) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    moveDrag(t.clientX, t.clientY);
+  }, {passive:false});
+  document.addEventListener('touchend', endDrag, {passive:true});
+  document.addEventListener('touchcancel', endDrag, {passive:true});
+}
+
 </script>
 </body>
 </html>
